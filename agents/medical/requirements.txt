@@ -1,0 +1,4 @@
+bedrock-agentcore
+strands-agents
+pydantic>=2.0
+mcp-proxy-for-aws

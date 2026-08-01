@@ -1,0 +1,15 @@
+[
+  {
+    "name": "get_pharmacy_options",
+    "description": "Find exactly three active pharmacies in a city, prioritizing the requested district, and return virtual pharmacist LINE contacts. Accept location only; never accept medical or personal information.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string", "description": "Stable lookup task identifier"},
+        "city": {"type": "string", "description": "City, for example 台北市"},
+        "district": {"type": "string", "description": "District, for example 信義區"}
+      },
+      "required": ["task_id", "city", "district"]
+    }
+  }
+]

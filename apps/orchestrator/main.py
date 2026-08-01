@@ -7,7 +7,7 @@ from bedrock_agentcore.runtime.context import RequestContext
 
 from apps.orchestrator.prompts import static_reply
 from apps.orchestrator.routing import classify_route
-from apps.orchestrator.specialist_client import invoke_repair
+from apps.orchestrator.specialist_client import invoke_specialist
 from apps.orchestrator.task_state import MEMORY_ID, build_state_agent, load_active_task, save_turn
 from shared.contracts import ActiveTask, HandoffRequest, RouteAction, SpecialistResponse, TaskStatus
 from shared.ids import new_task_id
@@ -16,11 +16,43 @@ from shared.ids import new_task_id
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("orchestrator")
 
+MEDICAL_CITY_ALIASES = {
+    "台北市": "台北市", "臺北市": "台北市", "台北": "台北市", "臺北": "台北市",
+    "新北市": "新北市", "新北": "新北市",
+    "台中市": "台中市", "臺中市": "台中市", "台中": "台中市", "臺中": "台中市",
+}
+MEDICAL_DEMO_DISTRICTS = {
+    "信義區", "大安區", "板橋區", "新店區", "中和區", "西屯區", "北屯區", "南屯區",
+}
+
+
+def _medical_handoff_input(message: str, known_facts: dict) -> tuple[str, dict]:
+    """Allow only coarse location data to cross the Medical boundary."""
+    safe_facts = {
+        key: str(value)
+        for key, value in known_facts.items()
+        if key in {"city", "district"} and value
+    }
+    for alias in sorted(MEDICAL_CITY_ALIASES, key=len, reverse=True):
+        if alias in message:
+            safe_facts["city"] = MEDICAL_CITY_ALIASES[alias]
+            break
+    for district in MEDICAL_DEMO_DISTRICTS:
+        if district in message:
+            safe_facts["district"] = district
+            break
+    location = "、".join(
+        f"{label}={safe_facts[key]}"
+        for key, label in (("city", "城市"), ("district", "行政區"))
+        if key in safe_facts
+    )
+    return (f"只使用以下位置資料：{location}" if location else "尚未提供城市與行政區。"), safe_facts
+
 
 def _next_known_facts(specialist: SpecialistResponse, fallback: dict) -> dict:
     """Persist structured specialist state needed for the next conversational turn."""
     facts = dict(specialist.data.get("known_facts") or fallback)
-    for key in ("stage", "estimate", "provider_options", "booking"):
+    for key in ("stage", "estimate", "provider_options", "booking", "pharmacy_options"):
         value = specialist.data.get(key)
         if value not in (None, [], {}):
             facts[key] = value
@@ -37,43 +69,55 @@ def process_turn(prompt: str, session_id: str, actor_id: str) -> dict:
 
     if routing.action == RouteAction.CANCEL and active_task:
         active_task.status = TaskStatus.CANCELLED
-        result = "已取消目前的修繕任務。"
+        result = "已取消目前的服務任務。"
         active_task = None
     elif routing.action == RouteAction.DISPATCH:
         logger.info(
-            "DISPATCH repair-agent task=%s sticky=%s message=%s",
+            "DISPATCH %s task=%s sticky=%s message_length=%s",
+            routing.target_agent,
             routing.sticky_task_id or "new",
             bool(routing.sticky_task_id),
-            prompt,
+            len(prompt),
         )
         task_id = active_task.task_id if active_task else new_task_id()
+        known_facts = active_task.known_facts if active_task else {}
+        handoff_message = prompt
+        if routing.target_agent == "medical-agent":
+            handoff_message, known_facts = _medical_handoff_input(prompt, known_facts)
         handoff = HandoffRequest(
             task_id=task_id,
             actor_id=actor_id,
             conversation_id=session_id,
             intent=routing.sub_intent or "repair_unspecified",
-            message=prompt,
-            known_facts=active_task.known_facts if active_task else {},
+            message=handoff_message,
+            known_facts=known_facts,
             missing_fields=active_task.missing_fields if active_task else [],
             safety_alert=routing.safety_alert,
         )
-        specialist, specialist_backend = invoke_repair(handoff)
+        specialist, specialist_backend = invoke_specialist(routing.target_agent or "repair-agent", handoff)
         if specialist.status == TaskStatus.NEEDS_INPUT:
+            next_facts = _next_known_facts(specialist, handoff.known_facts)
+            if routing.target_agent == "medical-agent":
+                next_facts = {
+                    key: value for key, value in next_facts.items() if key in {"city", "district"}
+                }
             active_task = ActiveTask(
                 task_id=specialist.task_id,
+                target_agent=routing.target_agent or specialist.agent,
                 intent=handoff.intent,
-                known_facts=_next_known_facts(specialist, handoff.known_facts),
+                known_facts=next_facts,
                 missing_fields=specialist.data.get("missing_fields", []),
             )
         else:
             active_task = None
         result = specialist.message
     elif routing.sticky_task_id and routing.action == RouteAction.CLARIFY:
-        result = "目前還在處理原本的修繕問題。你要先完成它，還是取消後建立新需求？"
+        result = "目前還在處理原本的服務需求。你要先完成它，還是取消後建立新需求？"
     else:
         result = static_reply(routing.intent)
 
-    save_turn(session_id, prompt, result, active_task, state_agent, manager)
+    memory_prompt = "[medical service request redacted]" if routing.intent.value == "medical" else prompt
+    save_turn(session_id, memory_prompt, result, active_task, state_agent, manager)
     return {
         "result": result,
         "session_id": session_id,

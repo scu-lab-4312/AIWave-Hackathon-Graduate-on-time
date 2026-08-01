@@ -4,8 +4,10 @@ import os
 import logging
 
 from adapters.agentcore_repair import AgentCoreRepairClient
+from adapters.agentcore_medical import AgentCoreMedicalClient
+from adapters.fake_medical import FakeMedicalClient
 from adapters.fake_repair import FakeRepairClient
-from apps.orchestrator.agent_registry import repair_registration
+from apps.orchestrator.agent_registry import medical_registration, repair_registration
 from adapters.base import SpecialistClient
 from shared.contracts import HandoffRequest, SpecialistResponse
 
@@ -39,3 +41,38 @@ def invoke_repair(request: HandoffRequest) -> tuple[SpecialistResponse, str]:
             raise
         logger.exception("AgentCore Repair Agent failed; using non-side-effecting fake fallback")
         return FakeRepairClient().invoke(request), "fake-fallback"
+
+
+def build_medical_client() -> SpecialistClient:
+    registration = medical_registration()
+    if registration.mode == "agentcore":
+        if not registration.runtime_arn:
+            raise RuntimeError("MEDICAL_AGENT_MODE=agentcore requires MEDICAL_AGENT_RUNTIME_ARN")
+        return AgentCoreMedicalClient(
+            runtime_arn=registration.runtime_arn,
+            region=os.getenv("AWS_REGION", "us-west-2"),
+            qualifier=registration.qualifier,
+        )
+    if registration.mode == "fake":
+        return FakeMedicalClient()
+    raise RuntimeError(f"Unsupported MEDICAL_AGENT_MODE: {registration.mode}")
+
+
+def invoke_medical(request: HandoffRequest) -> tuple[SpecialistResponse, str]:
+    registration = medical_registration()
+    try:
+        return build_medical_client().invoke(request), registration.mode
+    except Exception:
+        fallback_enabled = os.getenv("MEDICAL_AGENT_FAKE_FALLBACK", "true").lower() == "true"
+        if registration.mode != "agentcore" or not fallback_enabled:
+            raise
+        logger.exception("AgentCore Medical Agent failed; using non-side-effecting fake fallback")
+        return FakeMedicalClient().invoke(request), "fake-fallback"
+
+
+def invoke_specialist(target_agent: str, request: HandoffRequest) -> tuple[SpecialistResponse, str]:
+    if target_agent == "medical-agent":
+        return invoke_medical(request)
+    if target_agent == "repair-agent":
+        return invoke_repair(request)
+    raise RuntimeError(f"Unsupported specialist target: {target_agent}")

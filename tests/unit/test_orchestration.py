@@ -24,6 +24,27 @@ class RoutingTests(unittest.TestCase):
                 self.assertEqual(route.sub_intent, sub_intent)
                 self.assertEqual(route.action, RouteAction.DISPATCH)
 
+    def test_medical_routes_to_pharmacist_contact_agent(self):
+        for message in ("我想找附近藥局", "要去哪裡領藥", "想找藥師的 LINE"):
+            with self.subTest(message=message):
+                route = classify_route(message)
+                self.assertEqual(route.intent, IntentName.MEDICAL)
+                self.assertEqual(route.sub_intent, "pharmacist_contact")
+                self.assertEqual(route.target_agent, "medical-agent")
+                self.assertEqual(route.action, RouteAction.DISPATCH)
+
+    def test_medical_task_is_sticky(self):
+        task = ActiveTask(
+            task_id="medical-task-1",
+            target_agent="medical-agent",
+            intent="pharmacist_contact",
+            missing_fields=["city", "district"],
+        )
+        route = classify_route("台北市信義區", task)
+        self.assertEqual(route.intent, IntentName.MEDICAL)
+        self.assertEqual(route.target_agent, "medical-agent")
+        self.assertEqual(route.sticky_task_id, "medical-task-1")
+
     def test_platform_help_routes(self):
         for message in ("你好", "這個平台怎麼使用", "你們怎麼收費", "目前支援什麼服務"):
             with self.subTest(message=message):
@@ -111,6 +132,16 @@ class VerticalFlowTests(unittest.TestCase):
         self.assertEqual(facts["stage"], "awaiting_selection")
         self.assertEqual(facts["estimate"]["low"], 1200)
         self.assertEqual(facts["provider_options"][0]["provider_id"], 1)
+
+    def test_medical_handoff_drops_medical_and_personal_details(self):
+        message, facts = orchestrator._medical_handoff_input(
+            "我在台北市信義區，藥名與電話都不應送過去",
+            {"condition": "sensitive", "city": "新北市"},
+        )
+        self.assertEqual(facts, {"city": "台北市", "district": "信義區"})
+        self.assertEqual(message, "只使用以下位置資料：城市=台北市、行政區=信義區")
+        self.assertNotIn("藥名", message)
+        self.assertNotIn("電話", message)
 
 
 if __name__ == "__main__":
