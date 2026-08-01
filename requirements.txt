@@ -1,0 +1,8 @@
+# AgentCore Runtime 容器內的執行依賴(agentcore configure 會讀這份)
+# 開發工具 bedrock-agentcore-starter-toolkit 只裝在本機 .venv,不需進容器
+strands-agents
+bedrock-agentcore
+boto3
+pydantic>=2.0
+PyMySQL==1.1.1
+mcp-proxy-for-aws

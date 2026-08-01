@@ -1,0 +1,102 @@
+"""Reliable routing and task-state orchestration for the home-service agent."""
+
+import logging
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from bedrock_agentcore.runtime.context import RequestContext
+
+from apps.orchestrator.prompts import static_reply
+from apps.orchestrator.routing import classify_route
+from apps.orchestrator.specialist_client import invoke_repair
+from apps.orchestrator.task_state import MEMORY_ID, build_state_agent, load_active_task, save_turn
+from shared.contracts import ActiveTask, HandoffRequest, RouteAction, SpecialistResponse, TaskStatus
+from shared.ids import new_task_id
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("orchestrator")
+
+
+def _next_known_facts(specialist: SpecialistResponse, fallback: dict) -> dict:
+    """Persist structured specialist state needed for the next conversational turn."""
+    facts = dict(specialist.data.get("known_facts") or fallback)
+    for key in ("stage", "estimate", "provider_options", "booking"):
+        value = specialist.data.get(key)
+        if value not in (None, [], {}):
+            facts[key] = value
+    return facts
+
+
+def process_turn(prompt: str, session_id: str, actor_id: str) -> dict:
+    """Route one turn, update sticky task state, and return a transparent result."""
+    state_agent, manager = build_state_agent(session_id, actor_id)
+    active_task = load_active_task(session_id, state_agent)
+    routing = classify_route(prompt, active_task)
+    specialist: SpecialistResponse | None = None
+    specialist_backend: str | None = None
+
+    if routing.action == RouteAction.CANCEL and active_task:
+        active_task.status = TaskStatus.CANCELLED
+        result = "已取消目前的修繕任務。"
+        active_task = None
+    elif routing.action == RouteAction.DISPATCH:
+        logger.info(
+            "DISPATCH repair-agent task=%s sticky=%s message=%s",
+            routing.sticky_task_id or "new",
+            bool(routing.sticky_task_id),
+            prompt,
+        )
+        task_id = active_task.task_id if active_task else new_task_id()
+        handoff = HandoffRequest(
+            task_id=task_id,
+            actor_id=actor_id,
+            conversation_id=session_id,
+            intent=routing.sub_intent or "repair_unspecified",
+            message=prompt,
+            known_facts=active_task.known_facts if active_task else {},
+            missing_fields=active_task.missing_fields if active_task else [],
+            safety_alert=routing.safety_alert,
+        )
+        specialist, specialist_backend = invoke_repair(handoff)
+        if specialist.status == TaskStatus.NEEDS_INPUT:
+            active_task = ActiveTask(
+                task_id=specialist.task_id,
+                intent=handoff.intent,
+                known_facts=_next_known_facts(specialist, handoff.known_facts),
+                missing_fields=specialist.data.get("missing_fields", []),
+            )
+        else:
+            active_task = None
+        result = specialist.message
+    elif routing.sticky_task_id and routing.action == RouteAction.CLARIFY:
+        result = "目前還在處理原本的修繕問題。你要先完成它，還是取消後建立新需求？"
+    else:
+        result = static_reply(routing.intent)
+
+    save_turn(session_id, prompt, result, active_task, state_agent, manager)
+    return {
+        "result": result,
+        "session_id": session_id,
+        "memory_enabled": bool(MEMORY_ID),
+        "routing": routing.model_dump(mode="json"),
+        "specialist": specialist.model_dump(mode="json") if specialist else None,
+        "specialist_backend": specialist_backend,
+        "active_task": active_task.model_dump(mode="json") if active_task else None,
+    }
+
+
+app = BedrockAgentCoreApp()
+
+
+@app.entrypoint
+def invoke(payload: dict, context: RequestContext) -> dict:
+    prompt = str(payload.get("prompt", "")).strip()
+    if not prompt:
+        return {"result": "請提供 prompt 欄位，例如 {\"prompt\": \"我家水管在漏水\"}"}
+    session_id = context.session_id or payload.get("session_id") or "default-session"
+    actor_id = payload.get("actor_id") or "anonymous"
+    return process_turn(prompt, session_id, actor_id)
+
+
+if __name__ == "__main__":
+    app.run()

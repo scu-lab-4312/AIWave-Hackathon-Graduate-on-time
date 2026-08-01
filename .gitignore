@@ -1,1 +1,31 @@
+# Local configuration and credentials
 .env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# AgentCore local build/deployment state
+.bedrock_agentcore/
+.bedrock_agentcore.yaml
+
+# Build and editor artifacts
+build/
+dist/
+*.egg-info/
+.DS_Store
+.idea/
+.vscode/
+
+# Local logs and packaged artifacts
+*.log
+*.zip

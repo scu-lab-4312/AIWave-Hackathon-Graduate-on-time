@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>居家服務小幫手</title>
+  <style>
+    :root { color-scheme: light; --ink:#18312d; --muted:#68807b; --paper:#f5f3ec; --card:#fffdfa; --brand:#167d6b; --line:#dce4df; }
+    * { box-sizing:border-box } body { margin:0; font:16px/1.55 ui-sans-serif,system-ui,"Noto Sans TC",sans-serif; color:var(--ink); background:radial-gradient(circle at 10% 0,#d9eee5,transparent 35%),var(--paper); }
+    main { width:min(760px,100%); height:100dvh; margin:auto; padding:24px; display:grid; grid-template-rows:auto 1fr auto; gap:16px; }
+    header { display:flex; align-items:center; gap:12px } .logo { width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--brand);color:white;font-size:22px;box-shadow:0 8px 24px #167d6b33 }
+    h1 { font-size:20px;margin:0 } header p { margin:1px 0 0;color:var(--muted);font-size:13px }
+    #chat { overflow:auto;padding:12px 2px;display:flex;flex-direction:column;gap:12px;scroll-behavior:smooth }
+    .msg { max-width:82%;padding:12px 15px;border-radius:18px;white-space:pre-wrap;box-shadow:0 2px 12px #18312d0d }
+    .agent { align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:5px }
+    .user { align-self:flex-end;background:var(--brand);color:white;border-bottom-right-radius:5px }
+    .thinking { color:var(--muted) }
+    .results { align-self:stretch;display:grid;gap:10px }
+    .estimate { padding:13px 15px;background:#e8f5ef;border:1px solid #b8ddcf;border-radius:15px }
+    .estimate strong { display:block;font-size:18px }.estimate small { display:block;color:var(--muted);margin-top:3px }
+    .providers { display:grid;grid-template-columns:repeat(3,1fr);gap:10px }
+    .provider { background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 3px 14px #18312d0d }
+    .provider h3 { margin:0 0 3px;font-size:16px }.provider p { margin:2px 0;color:var(--muted);font-size:13px }
+    .slots { display:grid;gap:6px;margin-top:11px }.slot { width:100%;padding:8px 9px;border:1px solid #b8d7cd;background:white;color:var(--brand);font-size:12px }
+    form { display:flex;gap:10px;padding:10px;background:#ffffffcc;border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 40px #18312d14;backdrop-filter:blur(12px) }
+    textarea { flex:1;resize:none;border:0;outline:0;background:transparent;padding:8px;font:inherit;min-height:44px;max-height:130px;color:var(--ink) }
+    button { border:0;border-radius:13px;padding:0 20px;background:var(--brand);color:white;font-weight:700;cursor:pointer } button:disabled { opacity:.45;cursor:wait }
+    @media(max-width:650px){ main{padding:16px}.msg{max-width:90%}form>button{padding:0 15px}.providers{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+<main>
+  <header><div class="logo">⌂</div><div><h1>居家服務小幫手</h1><p>目前支援居家水電修繕</p></div></header>
+  <section id="chat" aria-live="polite"><div class="msg agent">你好！直接告訴我家裡遇到什麼問題，我會協助你處理。</div></section>
+  <form id="form"><textarea id="prompt" rows="1" placeholder="例如：廚房水管正在漏水…" required></textarea><button id="send">送出</button></form>
+</main>
+<script>
+  const chat=document.querySelector('#chat'), form=document.querySelector('#form'), input=document.querySelector('#prompt'), send=document.querySelector('#send');
+  const sessionId=sessionStorage.sessionId ||= crypto.randomUUID();
+  const actorId=localStorage.actorId ||= crypto.randomUUID();
+  function add(text,role,extra=''){const el=document.createElement('div');el.className=`msg ${role} ${extra}`;el.textContent=text;chat.append(el);chat.scrollTop=chat.scrollHeight;return el}
+  function money(value){return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(value)}
+  function localTime(value){return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}
+  function renderOptions(data){
+    const estimate=data?.estimate, providers=data?.provider_options||[];
+    if(!estimate&&!providers.length)return;
+    const wrap=document.createElement('section');wrap.className='results';
+    if(estimate){const box=document.createElement('div');box.className='estimate';box.innerHTML=`<strong>參考估價 ${money(estimate.low)}–${money(estimate.high)}</strong><small></small>`;box.querySelector('small').textContent=`${estimate.basis}，共 ${estimate.sample_size} 筆｜${estimate.disclaimer}`;wrap.append(box)}
+    if(providers.length){const grid=document.createElement('div');grid.className='providers';providers.slice(0,3).forEach((provider,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=`${index+1}. ${provider.name}`;const meta=document.createElement('p');meta.textContent=`${provider.city}${provider.district}｜★ ${provider.rating}｜完成 ${provider.completed_jobs} 件`;const fee=document.createElement('p');fee.textContent=`基本到府費 ${money(provider.base_visit_fee)}`;const slots=document.createElement('div');slots.className='slots';provider.available_slots.forEach(slot=>{const button=document.createElement('button');button.type='button';button.className='slot';button.textContent=`選擇 ${localTime(slot.start_at)}`;button.addEventListener('click',()=>sendPrompt(`我要選第 ${index+1} 間「${provider.name}」，時段 ${localTime(slot.start_at)}（slot_id: ${slot.slot_id}）`));slots.append(button)});card.append(title,meta,fee,slots);grid.append(card)});wrap.append(grid)}
+    chat.append(wrap);chat.scrollTop=chat.scrollHeight;
+  }
+  async function sendPrompt(prompt){if(!prompt||send.disabled)return;add(prompt,'user');input.value='';send.disabled=true;const wait=add('正在思考…','agent','thinking');
+    try{const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,session_id:sessionId,actor_id:actorId})});const body=await res.json();if(!res.ok)throw new Error(body.error);wait.textContent=body.result;wait.classList.remove('thinking');renderOptions(body.specialist?.data)}
+    catch(err){wait.textContent=err.message||'連線失敗，請稍後再試。';wait.classList.remove('thinking')}finally{send.disabled=false;input.focus()}
+  }
+  form.addEventListener('submit',e=>{e.preventDefault();sendPrompt(input.value.trim())});
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+</script>
+</body>
+</html>
