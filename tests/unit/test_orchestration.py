@@ -50,6 +50,32 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(route.target_agent, "medical-agent")
         self.assertEqual(route.sticky_task_id, "medical-task-1")
 
+    def test_taxi_routes_to_taxi_agent(self):
+        for message in (
+            "我想叫車去醫院",
+            "幫長輩預約無障礙車",
+            "需要輪椅接送",
+            "可以幫我預約計程車嗎",
+        ):
+            with self.subTest(message=message):
+                route = classify_route(message)
+                self.assertEqual(route.intent, IntentName.TAXI)
+                self.assertEqual(route.sub_intent, "accessible_ride")
+                self.assertEqual(route.target_agent, "taxi-agent")
+                self.assertEqual(route.action, RouteAction.DISPATCH)
+
+    def test_taxi_task_is_sticky(self):
+        task = ActiveTask(
+            task_id="taxi-task-1",
+            target_agent="taxi-agent",
+            intent="accessible_ride",
+            missing_fields=["destination"],
+        )
+        route = classify_route("要去台大醫院", task)
+        self.assertEqual(route.intent, IntentName.TAXI)
+        self.assertEqual(route.target_agent, "taxi-agent")
+        self.assertEqual(route.sticky_task_id, "taxi-task-1")
+
     def test_platform_help_routes(self):
         for message in ("你好", "這個平台怎麼使用", "你們怎麼收費", "目前支援什麼服務"):
             with self.subTest(message=message):
@@ -138,6 +164,22 @@ class VerticalFlowTests(unittest.TestCase):
         self.assertEqual(facts["estimate"]["low"], 1200)
         self.assertEqual(facts["provider_options"][0]["provider_id"], 1)
 
+    def test_taxi_driver_options_are_persisted_for_selection_turn(self):
+        specialist = SpecialistResponse(
+            task_id="taxi-options",
+            agent="taxi-agent",
+            status=TaskStatus.NEEDS_INPUT,
+            message="請選擇司機",
+            data={
+                "known_facts": {"pickup_city": "台北市", "pickup_district": "士林區"},
+                "stage": "awaiting_selection",
+                "driver_options": [{"driver_id": 1, "name": "安心接送司機"}],
+            },
+        )
+        facts = orchestrator._next_known_facts(specialist, {})
+        self.assertEqual(facts["stage"], "awaiting_selection")
+        self.assertEqual(facts["driver_options"][0]["driver_id"], 1)
+
     def test_medical_handoff_drops_medical_and_personal_details(self):
         message, facts = orchestrator._medical_handoff_input(
             "我在台北市信義區，藥名與電話都不應送過去",
@@ -154,6 +196,14 @@ class VerticalFlowTests(unittest.TestCase):
         self.assertEqual(facts, {"city": "台北市", "district": "士林區"})
         self.assertEqual(message, "只使用以下位置資料：城市=台北市、行政區=士林區")
         self.assertNotIn("處方", message)
+
+    def test_medical_city_follow_up_does_not_overwrite_saved_district(self):
+        message, facts = orchestrator._medical_handoff_input(
+            "台北市",
+            {"district": "士林區"},
+        )
+        self.assertEqual(facts, {"city": "台北市", "district": "士林區"})
+        self.assertEqual(message, "只使用以下位置資料：城市=台北市、行政區=士林區")
 
 
 if __name__ == "__main__":

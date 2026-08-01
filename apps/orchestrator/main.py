@@ -43,7 +43,7 @@ def _medical_handoff_input(message: str, known_facts: dict) -> tuple[str, dict]:
             city_end = city_start + len(alias)
             break
     district_match = MEDICAL_DISTRICT_AFTER_CITY.search(message[city_end:]) if city_end else None
-    if not district_match:
+    if city_end is None:
         district_match = MEDICAL_DISTRICT_STANDALONE.search(message)
     if district_match:
         safe_facts["district"] = district_match.group(1)
@@ -58,7 +58,9 @@ def _medical_handoff_input(message: str, known_facts: dict) -> tuple[str, dict]:
 def _next_known_facts(specialist: SpecialistResponse, fallback: dict) -> dict:
     """Persist structured specialist state needed for the next conversational turn."""
     facts = dict(specialist.data.get("known_facts") or fallback)
-    for key in ("stage", "estimate", "provider_options", "booking", "pharmacy_options"):
+    for key in (
+        "stage", "estimate", "provider_options", "driver_options", "booking", "pharmacy_options"
+    ):
         value = specialist.data.get(key)
         if value not in (None, [], {}):
             facts[key] = value

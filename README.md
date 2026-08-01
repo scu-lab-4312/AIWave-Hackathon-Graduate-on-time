@@ -2,11 +2,11 @@
 
 AgentCore Runtime 提供有限意圖路由、可追蹤的專業任務，以及 AgentCore Memory 多輪狀態。
 
-目前支援五種路由：`repair`、`medical`、`platform_help`、`unsupported_service`、`unknown`。Orchestrator 與專業 Agent 透過 `shared/contracts.py` 溝通，並能在 `needs_input` 後以相同 `task_id` 接續下一輪。
+目前支援六種路由：`repair`、`medical`、`taxi`、`platform_help`、`unsupported_service`、`unknown`。Orchestrator 與專業 Agent 透過 `shared/contracts.py` 溝通，並能在 `needs_input` 後以相同 `task_id` 接續下一輪。
 
 ## 專業 Agent backend
 
-Repair 與 Medical Agent 使用相同的 backend 選擇規則：
+Repair、Medical 與 Taxi Agent 使用相同的 backend 選擇規則：
 
 - 設定 `REPAIR_AGENT_RUNTIME_ARN`：`auto` 模式使用真正的 AgentCore Runtime。
 - 未設定 ARN：使用無外部副作用的 fake。
@@ -22,9 +22,15 @@ REPAIR_AGENT_FAKE_FALLBACK=true
 MEDICAL_AGENT_MODE=agentcore
 MEDICAL_AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...:runtime/...'
 MEDICAL_AGENT_FAKE_FALLBACK=true
+
+TAXI_AGENT_MODE=agentcore
+TAXI_AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...:runtime/...'
+TAXI_AGENT_FAKE_FALLBACK=true
 ```
 
 Medical Agent 只接收城市與行政區，從 RDS 取得三間藥局的公開電話；不接收或保存病名、症狀、藥名、處方或個人聯絡資料，也不建立預約。
+
+Taxi Agent 從共享 CMS 取得三位司機，收集城市、行政區、目的地與特殊乘車需求；使用者選擇司機與時段後建立 `requested` 預訂，不編造車牌或宣稱已確認派車。
 
 新增專業服務前先閱讀 [agents/docs/README.md](agents/docs/README.md)。
 
@@ -62,6 +68,7 @@ AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...' .venv/bin/python frontend.py
 apps/orchestrator/  # 路由、task state 與 specialist dispatch
 agents/repair/      # 可獨立部署的真實 Repair Agent baseline
 agents/medical/     # 隱私最小化的真實 Medical Agent
+agents/taxi/        # RDS-backed 接送媒合與預訂 Agent
 adapters/           # AgentCore transport 與 fake fallback
 shared/             # 版本化跨 Agent 契約
 agents/docs/        # 新服務 AgentCore 開發流程

@@ -11,6 +11,10 @@ MEDICAL_KEYWORDS = {
     "領藥", "拿藥", "取藥", "備藥", "領取", "藥局", "藥師",
     "處方", "處方箋", "處方籤", "處方簽", "慢箋", "慢性處方",
 }
+TAXI_KEYWORDS = {
+    "叫車", "計程車", "搭車", "預約車", "接送", "接我", "載我",
+    "復康巴士", "無障礙車", "輪椅車", "就醫專車", "uber", "Uber",
+}
 UNSUPPORTED_KEYWORDS = {"搬家", "清潔", "打掃", "洗衣", "除蟲", "冷氣清洗", "家事服務"}
 PLATFORM_KEYWORDS = {"怎麼使用", "如何使用", "怎麼用", "收費", "平台", "支援什麼", "服務範圍"}
 CANCEL_KEYWORDS = {"取消", "不用了", "先不要", "停止處理"}
@@ -45,7 +49,11 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
     text = message.strip()
 
     if active_task and active_task.status == TaskStatus.NEEDS_INPUT:
-        active_intent = IntentName.MEDICAL if active_task.target_agent == "medical-agent" else IntentName.REPAIR
+        active_intent = {
+            "medical-agent": IntentName.MEDICAL,
+            "taxi-agent": IntentName.TAXI,
+            "repair-agent": IntentName.REPAIR,
+        }.get(active_task.target_agent, IntentName.UNKNOWN)
         if _contains_any(text, CANCEL_KEYWORDS):
             return RoutingDecision(
                 intent=active_intent,
@@ -76,6 +84,15 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
             sticky_task_id=active_task.task_id,
         )
 
+    if _contains_any(text, TAXI_KEYWORDS):
+        return RoutingDecision(
+            intent=IntentName.TAXI,
+            sub_intent="accessible_ride",
+            confidence=0.97,
+            target_agent="taxi-agent",
+            action=RouteAction.DISPATCH,
+            reason="訊息包含叫車、接送或無障礙乘車需求",
+        )
     if _contains_any(text, MEDICAL_KEYWORDS):
         return RoutingDecision(
             intent=IntentName.MEDICAL,

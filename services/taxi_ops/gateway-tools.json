@@ -1,0 +1,32 @@
+[
+  {
+    "name": "get_taxi_options",
+    "description": "Find exactly three drivers from the shared CMS table in a pickup city and return fleet, driver, vehicle registration, phone, rating, and demo slots.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string", "description": "Stable Taxi task identifier"},
+        "city": {"type": "string", "description": "Pickup city, for example 台北市"}
+      },
+      "required": ["task_id", "city"]
+    }
+  },
+  {
+    "name": "create_taxi_booking",
+    "description": "Create an idempotent Taxi booking request after explicit driver and slot selection.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string", "description": "Stable booking idempotency key"},
+        "actor_id": {"type": "string", "description": "User identifier"},
+        "driver_id": {"type": "integer", "description": "Driver selected from get_taxi_options"},
+        "slot_id": {"type": "string", "description": "Selected available slot"},
+        "pickup_city": {"type": "string", "description": "Pickup city"},
+        "pickup_district": {"type": "string", "description": "Pickup district"},
+        "destination": {"type": "string", "description": "Destination name"},
+        "special_needs": {"type": "string", "description": "General, wheelchair, stretcher, oxygen, companion, or another explicit need"}
+      },
+      "required": ["task_id", "actor_id", "driver_id", "slot_id", "pickup_city", "pickup_district", "destination", "special_needs"]
+    }
+  }
+]

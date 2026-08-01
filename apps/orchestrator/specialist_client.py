@@ -5,9 +5,11 @@ import logging
 
 from adapters.agentcore_repair import AgentCoreRepairClient
 from adapters.agentcore_medical import AgentCoreMedicalClient
+from adapters.agentcore_taxi import AgentCoreTaxiClient
 from adapters.fake_medical import FakeMedicalClient
 from adapters.fake_repair import FakeRepairClient
-from apps.orchestrator.agent_registry import medical_registration, repair_registration
+from adapters.fake_taxi import FakeTaxiClient
+from apps.orchestrator.agent_registry import medical_registration, repair_registration, taxi_registration
 from adapters.base import SpecialistClient
 from shared.contracts import HandoffRequest, SpecialistResponse
 
@@ -70,7 +72,36 @@ def invoke_medical(request: HandoffRequest) -> tuple[SpecialistResponse, str]:
         return FakeMedicalClient().invoke(request), "fake-fallback"
 
 
+def build_taxi_client() -> SpecialistClient:
+    registration = taxi_registration()
+    if registration.mode == "agentcore":
+        if not registration.runtime_arn:
+            raise RuntimeError("TAXI_AGENT_MODE=agentcore requires TAXI_AGENT_RUNTIME_ARN")
+        return AgentCoreTaxiClient(
+            runtime_arn=registration.runtime_arn,
+            region=os.getenv("AWS_REGION", "us-west-2"),
+            qualifier=registration.qualifier,
+        )
+    if registration.mode == "fake":
+        return FakeTaxiClient()
+    raise RuntimeError(f"Unsupported TAXI_AGENT_MODE: {registration.mode}")
+
+
+def invoke_taxi(request: HandoffRequest) -> tuple[SpecialistResponse, str]:
+    registration = taxi_registration()
+    try:
+        return build_taxi_client().invoke(request), registration.mode
+    except Exception:
+        fallback_enabled = os.getenv("TAXI_AGENT_FAKE_FALLBACK", "true").lower() == "true"
+        if registration.mode != "agentcore" or not fallback_enabled:
+            raise
+        logger.exception("AgentCore Taxi Agent failed; using non-side-effecting fake fallback")
+        return FakeTaxiClient().invoke(request), "fake-fallback"
+
+
 def invoke_specialist(target_agent: str, request: HandoffRequest) -> tuple[SpecialistResponse, str]:
+    if target_agent == "taxi-agent":
+        return invoke_taxi(request)
     if target_agent == "medical-agent":
         return invoke_medical(request)
     if target_agent == "repair-agent":

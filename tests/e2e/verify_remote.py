@@ -89,6 +89,38 @@ def main() -> None:
         ),
         flush=True,
     )
+
+    taxi_session = str(uuid.uuid4())
+    _, taxi_first = invoke(
+        client,
+        "我想從台北市士林區叫車去台大醫院，需要輪椅乘車",
+        taxi_session,
+    )
+    taxi_task_id = taxi_first["active_task"]["task_id"]
+    assert taxi_first["routing"]["intent"] == "taxi", taxi_first
+    assert taxi_first["specialist_backend"] == "agentcore", taxi_first
+    assert taxi_first["specialist"]["data"]["stage"] == "awaiting_selection", taxi_first
+    assert len(taxi_first["specialist"]["data"]["driver_options"]) == 3, taxi_first
+    driver = taxi_first["specialist"]["data"]["driver_options"][0]
+    slot = driver["available_slots"][0]
+    _, taxi_second = invoke(
+        client,
+        f"我要選第一位「{driver['driver_name']}」，slot_id: {slot['slot_id']}",
+        taxi_session,
+    )
+    assert taxi_second["routing"]["sticky_task_id"] == taxi_task_id, taxi_second
+    assert taxi_second["specialist_backend"] == "agentcore", taxi_second
+    assert taxi_second["specialist"]["data"]["stage"] == "booked", taxi_second
+    assert taxi_second["specialist"]["data"]["booking"]["status"] == "requested", taxi_second
+    assert taxi_second["active_task"] is None, taxi_second
+    print(
+        json.dumps(
+            {"taxi_session": taxi_session, "first": taxi_first, "second": taxi_second},
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+
     memory = client.list_events(
         memoryId=MEMORY_ID,
         actorId="remote-verifier",

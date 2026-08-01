@@ -1,0 +1,1 @@
+"""Taxi Gateway Lambda service."""
