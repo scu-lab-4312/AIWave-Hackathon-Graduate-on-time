@@ -1,5 +1,6 @@
 {
   "gatewayIdentifier": "repair-demo-gateway-o4idvsbeb7",
+  "targetId": "BA95GV6EHN",
   "name": "repair-operations",
   "description": "Shared CMS provider search with Agent-owned estimate, availability, and booking operations",
   "targetConfiguration": {
