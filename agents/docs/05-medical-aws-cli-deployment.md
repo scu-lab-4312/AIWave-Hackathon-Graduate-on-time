@@ -34,11 +34,11 @@ Lambda:   arn:aws:lambda:us-west-2:377648263536:function:medical-db-query
 Gateway:  arn:aws:bedrock-agentcore:us-west-2:377648263536:gateway/medical-demo-gateway-b3u2v4irhq
 Target:   UTVWOUQ6WY (medical-pharmacist-contacts)
 Runtime:  arn:aws:bedrock-agentcore:us-west-2:377648263536:runtime/medical_specialist-UvOi1ZGIfR
-Orch:     arn:aws:bedrock-agentcore:us-west-2:377648263536:runtime/orchestrator-B7uJuFGYRT (v5)
+Orch:     arn:aws:bedrock-agentcore:us-west-2:377648263536:runtime/orchestrator-B7uJuFGYRT (v6)
 RDS:      repair-demo-mysql / repair_demo / medical_pharmacies
 ```
 
-RDS 與 Secret 沿用 Repair 基礎設施，但資料表使用 `medical_` 前綴，不修改 Repair 表。虛擬資料目前包含台北市、新北市、台中市共 12 間藥局。
+RDS 與 Secret 沿用 Repair 基礎設施，但資料表使用 `medical_` 前綴，不修改 Repair 表。虛擬資料目前包含台北市、新北市、台中市共 15 間藥局，其中士林區有三間可供完整 demo。
 
 ## 3. Lambda 與 RDS
 

@@ -25,7 +25,12 @@ class RoutingTests(unittest.TestCase):
                 self.assertEqual(route.action, RouteAction.DISPATCH)
 
     def test_medical_routes_to_pharmacist_contact_agent(self):
-        for message in ("我想找附近藥局", "要去哪裡領藥", "想找藥師的 LINE"):
+        for message in (
+            "我想找附近藥局",
+            "要去哪裡領藥",
+            "想找藥師的 LINE",
+            "我有處方簽想領，我住在台北市士林區，我可以去哪邊領",
+        ):
             with self.subTest(message=message):
                 route = classify_route(message)
                 self.assertEqual(route.intent, IntentName.MEDICAL)
@@ -142,6 +147,13 @@ class VerticalFlowTests(unittest.TestCase):
         self.assertEqual(message, "只使用以下位置資料：城市=台北市、行政區=信義區")
         self.assertNotIn("藥名", message)
         self.assertNotIn("電話", message)
+
+    def test_medical_handoff_extracts_shilin_from_full_request(self):
+        original = "我有處方簽想領，我住在台北市士林區，我可以去哪邊領"
+        message, facts = orchestrator._medical_handoff_input(original, {})
+        self.assertEqual(facts, {"city": "台北市", "district": "士林區"})
+        self.assertEqual(message, "只使用以下位置資料：城市=台北市、行政區=士林區")
+        self.assertNotIn("處方", message)
 
 
 if __name__ == "__main__":
