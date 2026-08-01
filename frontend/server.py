@@ -8,6 +8,7 @@ from pathlib import Path
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import CredentialRetrievalError, NoCredentialsError, PartialCredentialsError
 
 
 ROOT = Path(__file__).parent
@@ -15,6 +16,7 @@ RUNTIME_ARN = os.getenv("AGENT_RUNTIME_ARN")
 REGION = os.getenv("AWS_REGION", "us-west-2")
 BACKEND_MODE = os.getenv("FRONTEND_AGENT_MODE", "auto").strip().lower()
 VALID_BACKEND_MODES = {"auto", "agentcore", "local"}
+CREDENTIAL_ERRORS = (CredentialRetrievalError, NoCredentialsError, PartialCredentialsError)
 logger = logging.getLogger("frontend.server")
 
 
@@ -40,13 +42,13 @@ def _invoke_remote(prompt: str, session_id: str, actor_id: str) -> dict:
 def _invoke_local(prompt: str, session_id: str, actor_id: str, backend: str) -> dict:
     from apps.orchestrator.main import process_turn
 
-    body = process_turn(prompt, session_id, actor_id)
+    body = process_turn(prompt, session_id, actor_id, local_only=True)
     body["orchestrator_backend"] = backend
     return body
 
 
 def invoke_agent(prompt: str, session_id: str, actor_id: str) -> dict:
-    """Use the configured backend, with a local fallback in auto mode."""
+    """Use the configured backend without replaying ambiguous remote failures."""
     if BACKEND_MODE not in VALID_BACKEND_MODES:
         raise RuntimeError(
             f"Unsupported FRONTEND_AGENT_MODE: {BACKEND_MODE}; "
@@ -58,8 +60,8 @@ def invoke_agent(prompt: str, session_id: str, actor_id: str) -> dict:
         return _invoke_remote(prompt, session_id, actor_id)
     try:
         return _invoke_remote(prompt, session_id, actor_id)
-    except Exception:
-        logger.exception("AgentCore orchestrator failed; using local fallback")
+    except CREDENTIAL_ERRORS:
+        logger.exception("AgentCore credentials unavailable; using local fallback")
         return _invoke_local(prompt, session_id, actor_id, "local-fallback")
 
 
