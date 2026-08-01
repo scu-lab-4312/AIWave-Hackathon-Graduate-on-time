@@ -1,0 +1,35 @@
+[
+  {
+    "name": "get_repair_options",
+    "description": "Find at least three active repair providers in the requested city, prioritizing the same district, and calculate a reference price range from similar completed repair events.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string", "description": "Stable repair task identifier"},
+        "issue_type": {"type": "string", "description": "Normalized issue type such as plumbing_leak"},
+        "city": {"type": "string", "description": "Service city, for example 台北市"},
+        "district": {"type": "string", "description": "Service district, for example 信義區"},
+        "issue_summary": {"type": "string", "description": "Concise known repair facts"}
+      },
+      "required": ["task_id", "issue_type", "city", "district"]
+    }
+  },
+  {
+    "name": "create_repair_booking",
+    "description": "Create an idempotent repair booking request after the user explicitly selects a provider and an available slot.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string", "description": "Stable idempotency key for this repair task"},
+        "actor_id": {"type": "string", "description": "User identifier"},
+        "provider_id": {"type": "integer", "description": "Provider selected from get_repair_options"},
+        "slot_id": {"type": "string", "description": "Available slot selected by the user"},
+        "issue_type": {"type": "string", "description": "Normalized repair issue type"},
+        "issue_summary": {"type": "string", "description": "Concise repair description stored with the booking"},
+        "estimate_low": {"type": "integer", "description": "Reference estimate lower bound in TWD"},
+        "estimate_high": {"type": "integer", "description": "Reference estimate upper bound in TWD"}
+      },
+      "required": ["task_id", "actor_id", "provider_id", "slot_id", "issue_type", "issue_summary", "estimate_low", "estimate_high"]
+    }
+  }
+]

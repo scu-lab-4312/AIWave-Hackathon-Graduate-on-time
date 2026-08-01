@@ -1,0 +1,12 @@
+[project]
+name = "orchestrator-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "bedrock-agentcore>=1.19.0",
+    "bedrock-agentcore-starter-toolkit>=0.3.11",
+    "strands-agents>=1.50.2",
+    "pydantic>=2.0",
+    "PyMySQL==1.1.1",
+    "mcp-proxy-for-aws",
+]

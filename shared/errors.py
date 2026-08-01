@@ -1,0 +1,12 @@
+"""Stable error codes used across agent boundaries."""
+
+from enum import Enum
+
+
+class AgentErrorCode(str, Enum):
+    INVALID_REQUEST = "INVALID_REQUEST"
+    AGENT_NOT_CONFIGURED = "AGENT_NOT_CONFIGURED"
+    AGENT_TIMEOUT = "AGENT_TIMEOUT"
+    AGENT_UNAVAILABLE = "AGENT_UNAVAILABLE"
+    INVALID_AGENT_RESPONSE = "INVALID_AGENT_RESPONSE"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
