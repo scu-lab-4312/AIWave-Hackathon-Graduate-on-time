@@ -1,4 +1,4 @@
-"""Protocol-neutral pharmacist contact lookup workflow."""
+"""Protocol-neutral pharmacy contact lookup workflow."""
 
 import json
 
@@ -20,14 +20,14 @@ def process_handoff(request: HandoffRequest) -> SpecialistResponse:
     if gateway:
         agent = build_agent(tools=[gateway])
         result = agent(
-            "根據以下藥師聯絡資訊任務判斷本輪、需要時呼叫工具，最後輸出 MedicalAssessment：\n"
+            "根據以下藥局聯絡資訊任務判斷本輪、需要時呼叫工具，最後輸出 MedicalAssessment：\n"
             + json.dumps(instruction, ensure_ascii=False),
             structured_output_model=MedicalAssessment,
         )
     else:
         agent = build_agent()
         result = agent(
-            "目前沒有查詢工具，只能收集 city、district，不得編造藥局或 LINE。輸出 MedicalAssessment：\n"
+            "目前沒有查詢工具，只能收集 city、district，不得編造藥局或電話。輸出 MedicalAssessment：\n"
             + json.dumps(instruction, ensure_ascii=False),
             structured_output_model=MedicalAssessment,
         )

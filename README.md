@@ -24,7 +24,7 @@ MEDICAL_AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...:runtime/...'
 MEDICAL_AGENT_FAKE_FALLBACK=true
 ```
 
-Medical Agent 只接收城市與行政區，從 RDS 取得三間虛擬藥局的藥師 LINE；不接收或保存病名、症狀、藥名、處方或個人聯絡資料，也不建立預約。
+Medical Agent 只接收城市與行政區，從 RDS 取得三間藥局的公開電話；不接收或保存病名、症狀、藥名、處方或個人聯絡資料，也不建立預約。
 
 新增專業服務前先閱讀 [agents/docs/README.md](agents/docs/README.md)。
 

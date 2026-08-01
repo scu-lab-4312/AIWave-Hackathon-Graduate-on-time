@@ -1,4 +1,4 @@
-"""Structured output models for pharmacist contact lookup."""
+"""Structured output models for pharmacy contact lookup."""
 
 from typing import Any, Literal
 
@@ -13,8 +13,7 @@ class PharmacyOption(BaseModel):
     district: str
     address: str
     rating: float
-    pharmacist_name: str
-    line_id: str
+    phone: str
 
 
 class MedicalAssessment(BaseModel):

@@ -35,7 +35,7 @@ def main() -> None:
     print(f"runtime={RUNTIME_ARN}", flush=True)
     cases = [
         ("我家廚房水管一直漏水，已經關總水閥了", "repair"),
-        ("我想找藥師的 LINE", "medical"),
+        ("我想找附近藥局的電話", "medical"),
         ("你好，這個平台怎麼使用？", "platform_help"),
         ("我想預約搬家服務", "unsupported_service"),
         ("家裡怪怪的", "unknown"),
@@ -70,7 +70,7 @@ def main() -> None:
     print(json.dumps({"task_session": task_session, "first": first, "second": second}, ensure_ascii=False), flush=True)
 
     medical_session = str(uuid.uuid4())
-    medical_prompt = "我想找藥師的 LINE，不提供醫療資料"
+    medical_prompt = "我想找附近藥局的電話，不提供醫療資料"
     _, medical_first = invoke(client, medical_prompt, medical_session)
     medical_task_id = medical_first["active_task"]["task_id"]
     assert medical_first["routing"]["intent"] == "medical", medical_first

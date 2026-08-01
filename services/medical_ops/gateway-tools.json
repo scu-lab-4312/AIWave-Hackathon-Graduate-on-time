@@ -1,7 +1,7 @@
 [
   {
     "name": "get_pharmacy_options",
-    "description": "Find exactly three active pharmacies in a city, prioritizing the requested district, and return virtual pharmacist LINE contacts. Accept location only; never accept medical or personal information.",
+    "description": "Find exactly three pharmacies in a city, prioritizing the requested district, and return their public phone contacts. Accept location only; never accept medical or personal information.",
     "inputSchema": {
       "type": "object",
       "properties": {

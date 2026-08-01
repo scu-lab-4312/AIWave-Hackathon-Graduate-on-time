@@ -19,7 +19,7 @@ class MedicalContractTests(unittest.TestCase):
         self.assertEqual(response.data["known_facts"], {})
         self.assertEqual(response.error["code"], "MEDICAL_AGENT_UNAVAILABLE")
 
-    def test_contacts_ready_contract_contains_line_contacts_only(self):
+    def test_contacts_ready_contract_contains_phone_contacts_only(self):
         assessment = MedicalAssessment.model_validate(
             {
                 "status": "completed",
@@ -34,8 +34,7 @@ class MedicalContractTests(unittest.TestCase):
                         "district": "信義區",
                         "address": f"測試路 {index} 號",
                         "rating": 4.8,
-                        "pharmacist_name": f"測試藥師 {index}",
-                        "line_id": f"@demo-{index}",
+                        "phone": f"02-2100-000{index}",
                     }
                     for index in range(1, 4)
                 ],
