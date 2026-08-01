@@ -7,6 +7,7 @@ REPAIR_KEYWORDS = {
     "漏水", "爆管", "淹水", "水管", "水龍頭", "馬桶", "堵塞", "阻塞", "排水",
     "插座", "電線", "電路", "跳電", "斷電", "沒電", "燈具", "燈泡", "不亮", "水電",
 }
+MEDICAL_KEYWORDS = {"領藥", "拿藥", "取藥", "備藥", "藥局", "藥師", "處方箋", "處方籤", "慢箋", "慢性處方"}
 UNSUPPORTED_KEYWORDS = {"搬家", "清潔", "打掃", "洗衣", "除蟲", "冷氣清洗", "家事服務"}
 PLATFORM_KEYWORDS = {"怎麼使用", "如何使用", "怎麼用", "收費", "平台", "支援什麼", "服務範圍"}
 CANCEL_KEYWORDS = {"取消", "不用了", "先不要", "停止處理"}
@@ -41,9 +42,10 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
     text = message.strip()
 
     if active_task and active_task.status == TaskStatus.NEEDS_INPUT:
+        active_intent = IntentName.MEDICAL if active_task.target_agent == "medical-agent" else IntentName.REPAIR
         if _contains_any(text, CANCEL_KEYWORDS):
             return RoutingDecision(
-                intent=IntentName.REPAIR,
+                intent=active_intent,
                 sub_intent=active_task.intent,
                 confidence=1,
                 target_agent=active_task.target_agent,
@@ -61,16 +63,25 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
                 sticky_task_id=active_task.task_id,
             )
         return RoutingDecision(
-            intent=IntentName.REPAIR,
+            intent=active_intent,
             sub_intent=active_task.intent,
             confidence=1,
             target_agent=active_task.target_agent,
             action=RouteAction.DISPATCH,
-            safety_alert=_safety_alert(text),
+            safety_alert=_safety_alert(text) if active_intent == IntentName.REPAIR else None,
             reason="延續目前進行中的專業任務",
             sticky_task_id=active_task.task_id,
         )
 
+    if _contains_any(text, MEDICAL_KEYWORDS):
+        return RoutingDecision(
+            intent=IntentName.MEDICAL,
+            sub_intent="pharmacist_contact",
+            confidence=0.97,
+            target_agent="medical-agent",
+            action=RouteAction.DISPATCH,
+            reason="訊息包含找藥局或藥師聯絡方式的需求",
+        )
     if _contains_any(text, REPAIR_KEYWORDS):
         return RoutingDecision(
             intent=IntentName.REPAIR,

@@ -11,6 +11,7 @@ CONTRACT_VERSION = "1.0"
 
 class IntentName(str, Enum):
     REPAIR = "repair"
+    MEDICAL = "medical"
     PLATFORM_HELP = "platform_help"
     UNSUPPORTED_SERVICE = "unsupported_service"
     UNKNOWN = "unknown"

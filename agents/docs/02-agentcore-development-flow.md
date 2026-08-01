@@ -61,6 +61,8 @@ agentcore add memory --name repair_agent_memory
 
 需要跨案件偏好或摘要時才加入 SEMANTIC/SUMMARIZATION 等長期策略。只做單一案件多輪時，STM 足夠。
 
+若領域不需要保存狀態，或資料最小化比延續性更重要，可以不替專業 Agent 建 Memory。此時由 Orchestrator 的 active task 只保存下一輪必需欄位；例如 Medical Agent 僅保存 `city`、`district`，使用者原始文字以 redacted placeholder 寫入 Orchestrator Memory。
+
 部署後確認 execution role 對正確 Memory ARN 具有 `CreateEvent`、`ListEvents`、`ListSessions` 等實際使用權限；不要只確認 Memory 狀態為 ACTIVE。
 
 ## 4. 工具與 Gateway
@@ -97,10 +99,10 @@ SDK 呼叫 `InvokeAgentRuntime` 時需要 `bedrock-agentcore:InvokeAgentRuntime`
 部署完成後設定：
 
 ```bash
-REPAIR_AGENT_MODE=agentcore
-REPAIR_AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...:runtime/...'
-REPAIR_AGENT_QUALIFIER=DEFAULT
-REPAIR_AGENT_FAKE_FALLBACK=true
+<SERVICE>_AGENT_MODE=agentcore
+<SERVICE>_AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...:runtime/...'
+<SERVICE>_AGENT_QUALIFIER=DEFAULT
+<SERVICE>_AGENT_FAKE_FALLBACK=true
 ```
 
 Orchestrator execution role必須只被允許呼叫目標 Runtime ARN。觀察 `specialist_backend`：正式請求應為 `agentcore`，若出現 `fake-fallback` 必須在 logs/metrics 中可見。
