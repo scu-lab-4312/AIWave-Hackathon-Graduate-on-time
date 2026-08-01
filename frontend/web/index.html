@@ -22,8 +22,8 @@
     .provider { background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 3px 14px #18312d0d }
     .provider h3 { margin:0 0 3px;font-size:16px }.provider p { margin:2px 0;color:var(--muted);font-size:13px }
     .slots { display:grid;gap:6px;margin-top:11px }.slot { width:100%;padding:8px 9px;border:1px solid #b8d7cd;background:white;color:var(--brand);font-size:12px }
-    .line-contact { display:grid;gap:5px;margin-top:11px;padding:9px;background:#eef8f4;border-radius:11px;color:var(--ink);font-size:13px }
-    .copy-line { width:100%;padding:8px 9px;margin-top:8px;border:1px solid #b8d7cd;background:white;color:var(--brand);font-size:12px }
+    .pharmacy-contact { display:grid;gap:5px;margin-top:11px;padding:9px;background:#eef8f4;border-radius:11px;color:var(--ink);font-size:13px }
+    .copy-contact { width:100%;padding:8px 9px;margin-top:8px;border:1px solid #b8d7cd;background:white;color:var(--brand);font-size:12px }
     form { display:flex;gap:10px;padding:10px;background:#ffffffcc;border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 40px #18312d14;backdrop-filter:blur(12px) }
     textarea { flex:1;resize:none;border:0;outline:0;background:transparent;padding:8px;font:inherit;min-height:44px;max-height:130px;color:var(--ink) }
     button { border:0;border-radius:13px;padding:0 20px;background:var(--brand);color:white;font-weight:700;cursor:pointer } button:disabled { opacity:.45;cursor:wait }
@@ -32,24 +32,26 @@
 </head>
 <body>
 <main>
-  <header><div class="logo">⌂</div><div><h1>生活服務小幫手</h1><p>居家水電修繕・依地區尋找藥師 LINE</p></div></header>
-  <section id="chat" aria-live="polite"><div class="msg agent">你好！你可以描述居家修繕問題，或告訴我想在哪個城市、行政區找藥師。找藥師不需要提供任何醫療資訊。</div></section>
-  <form id="form"><textarea id="prompt" rows="1" placeholder="例如：我想找台北市信義區的藥師…" required></textarea><button id="send">送出</button></form>
+  <header><div class="logo">⌂</div><div><h1>生活服務小幫手</h1><p>居家水電修繕・藥局電話・接送預約</p></div></header>
+  <section id="chat" aria-live="polite"><div class="msg agent">你好！你可以描述居家修繕問題、依地區找藥局，或預約一般／無障礙接送服務。</div></section>
+  <form id="form"><textarea id="prompt" rows="1" placeholder="例如：我想從台北市士林區叫車去台大醫院…" required></textarea><button id="send">送出</button></form>
 </main>
 <script>
   const chat=document.querySelector('#chat'), form=document.querySelector('#form'), input=document.querySelector('#prompt'), send=document.querySelector('#send');
+  let isComposing=false;
   const sessionId=sessionStorage.sessionId ||= crypto.randomUUID();
   const actorId=localStorage.actorId ||= crypto.randomUUID();
   function add(text,role,extra=''){const el=document.createElement('div');el.className=`msg ${role} ${extra}`;el.textContent=text;chat.append(el);chat.scrollTop=chat.scrollHeight;return el}
   function money(value){return new Intl.NumberFormat('zh-TW',{style:'currency',currency:'TWD',maximumFractionDigits:0}).format(value)}
   function localTime(value){return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}
   function renderOptions(data){
-    const estimate=data?.estimate, providers=data?.provider_options||[], pharmacies=data?.pharmacy_options||[];
-    if(!estimate&&!providers.length&&!pharmacies.length)return;
+    const estimate=data?.estimate, providers=data?.provider_options||[], pharmacies=data?.pharmacy_options||[], drivers=data?.driver_options||[];
+    if(!estimate&&!providers.length&&!pharmacies.length&&!drivers.length)return;
     const wrap=document.createElement('section');wrap.className='results';
     if(estimate){const box=document.createElement('div');box.className='estimate';box.innerHTML=`<strong>參考估價 ${money(estimate.low)}–${money(estimate.high)}</strong><small></small>`;box.querySelector('small').textContent=`${estimate.basis}，共 ${estimate.sample_size} 筆｜${estimate.disclaimer}`;wrap.append(box)}
-    if(providers.length){const grid=document.createElement('div');grid.className='providers';providers.slice(0,3).forEach((provider,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=`${index+1}. ${provider.name}`;const meta=document.createElement('p');meta.textContent=`${provider.city}${provider.district}｜★ ${provider.rating}｜完成 ${provider.completed_jobs} 件`;const fee=document.createElement('p');fee.textContent=`基本到府費 ${money(provider.base_visit_fee)}`;const slots=document.createElement('div');slots.className='slots';provider.available_slots.forEach(slot=>{const button=document.createElement('button');button.type='button';button.className='slot';button.textContent=`選擇 ${localTime(slot.start_at)}`;button.addEventListener('click',()=>sendPrompt(`我要選第 ${index+1} 間「${provider.name}」，時段 ${localTime(slot.start_at)}（slot_id: ${slot.slot_id}）`));slots.append(button)});card.append(title,meta,fee,slots);grid.append(card)});wrap.append(grid)}
-    if(pharmacies.length){const notice=document.createElement('div');notice.className='estimate';const strong=document.createElement('strong');strong.textContent='藥師 LINE 聯絡資訊';const small=document.createElement('small');small.textContent='以下為黑客松虛擬資料，請自行聯絡藥師；本平台不接收醫療資訊，也不建立預約。';notice.append(strong,small);wrap.append(notice);const grid=document.createElement('div');grid.className='providers';pharmacies.slice(0,3).forEach((pharmacy,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=`${index+1}. ${pharmacy.name}`;const meta=document.createElement('p');meta.textContent=`${pharmacy.city}${pharmacy.district}｜★ ${pharmacy.rating}`;const address=document.createElement('p');address.textContent=pharmacy.address;const contact=document.createElement('div');contact.className='line-contact';contact.textContent=`${pharmacy.pharmacist_name}｜LINE ${pharmacy.line_id}`;const copy=document.createElement('button');copy.type='button';copy.className='copy-line';copy.textContent='複製 LINE ID';copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(pharmacy.line_id);copy.textContent='已複製';setTimeout(()=>copy.textContent='複製 LINE ID',1200)});card.append(title,meta,address,contact,copy);grid.append(card)});wrap.append(grid)}
+    if(providers.length){const grid=document.createElement('div');grid.className='providers';providers.slice(0,3).forEach((provider,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=`${index+1}. ${provider.name}`;const meta=document.createElement('p');meta.textContent=`${provider.city}${provider.district}｜★ ${provider.rating}`;const address=document.createElement('p');address.textContent=provider.address;const phone=document.createElement('p');phone.textContent=`電話 ${provider.phone}`;const fee=document.createElement('p');fee.textContent=`基本到府費 ${money(provider.base_visit_fee)}`;const slots=document.createElement('div');slots.className='slots';provider.available_slots.forEach(slot=>{const button=document.createElement('button');button.type='button';button.className='slot';button.textContent=`選擇 ${localTime(slot.start_at)}`;button.addEventListener('click',()=>sendPrompt(`我要選第 ${index+1} 間「${provider.name}」，時段 ${localTime(slot.start_at)}（slot_id: ${slot.slot_id}）`));slots.append(button)});card.append(title,meta,address,phone,fee,slots);grid.append(card)});wrap.append(grid)}
+    if(drivers.length){const notice=document.createElement('div');notice.className='estimate';const strong=document.createElement('strong');strong.textContent='接送司機選項';const small=document.createElement('small');small.textContent='司機來自黑客松共享 CMS；時段與預訂為示範資料，特殊需求請自行致電確認。';notice.append(strong,small);wrap.append(notice);const grid=document.createElement('div');grid.className='providers';drivers.slice(0,3).forEach((driver,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=`${index+1}. ${driver.driver_name}`;const meta=document.createElement('p');meta.textContent=`${driver.fleet_name}｜${driver.city}｜★ ${driver.rating}`;const plate=document.createElement('p');plate.textContent=`車牌 ${driver.vehicle_reg_number}`;const phone=document.createElement('p');phone.textContent=`電話 ${driver.phone}`;const slots=document.createElement('div');slots.className='slots';driver.available_slots.forEach(slot=>{const button=document.createElement('button');button.type='button';button.className='slot';button.textContent=`選擇 ${localTime(slot.start_at)}`;button.addEventListener('click',()=>sendPrompt(`我要選第 ${index+1} 位司機「${driver.driver_name}」，時段 ${localTime(slot.start_at)}（slot_id: ${slot.slot_id}）`));slots.append(button)});card.append(title,meta,plate,phone,slots);grid.append(card)});wrap.append(grid)}
+    if(pharmacies.length){const notice=document.createElement('div');notice.className='estimate';const strong=document.createElement('strong');strong.textContent='藥局聯絡電話';const small=document.createElement('small');small.textContent='以下為黑客松示範資料，請自行致電藥局確認；本平台不接收醫療資訊，也不建立預約。';notice.append(strong,small);wrap.append(notice);const grid=document.createElement('div');grid.className='providers';pharmacies.slice(0,3).forEach((pharmacy,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=`${index+1}. ${pharmacy.name}`;const meta=document.createElement('p');meta.textContent=`${pharmacy.city}${pharmacy.district}｜★ ${pharmacy.rating}`;const address=document.createElement('p');address.textContent=pharmacy.address;const contact=document.createElement('div');contact.className='pharmacy-contact';contact.textContent=`電話 ${pharmacy.phone}`;const copy=document.createElement('button');copy.type='button';copy.className='copy-contact';copy.textContent='複製電話';copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(pharmacy.phone);copy.textContent='已複製';setTimeout(()=>copy.textContent='複製電話',1200)});card.append(title,meta,address,contact,copy);grid.append(card)});wrap.append(grid)}
     chat.append(wrap);chat.scrollTop=chat.scrollHeight;
   }
   async function sendPrompt(prompt){if(!prompt||send.disabled)return;add(prompt,'user');input.value='';send.disabled=true;const wait=add('正在思考…','agent','thinking');
@@ -57,7 +59,13 @@
     catch(err){wait.textContent=err.message||'連線失敗，請稍後再試。';wait.classList.remove('thinking')}finally{send.disabled=false;input.focus()}
   }
   form.addEventListener('submit',e=>{e.preventDefault();sendPrompt(input.value.trim())});
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+  input.addEventListener('compositionstart',()=>{isComposing=true});
+  input.addEventListener('compositionend',()=>{isComposing=false});
+  input.addEventListener('keydown',e=>{
+    if(e.key!=='Enter'||e.shiftKey)return;
+    if(isComposing||e.isComposing||e.keyCode===229)return;
+    e.preventDefault();form.requestSubmit();
+  });
 </script>
 </body>
 </html>

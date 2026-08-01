@@ -38,3 +38,17 @@ def medical_registration() -> AgentRegistration:
         runtime_arn=runtime_arn,
         qualifier=os.getenv("MEDICAL_AGENT_QUALIFIER", "DEFAULT"),
     )
+
+
+def taxi_registration() -> AgentRegistration:
+    runtime_arn = os.getenv("TAXI_AGENT_RUNTIME_ARN")
+    configured_mode = os.getenv("TAXI_AGENT_MODE", "auto").lower()
+    mode = "agentcore" if configured_mode == "auto" and runtime_arn else configured_mode
+    if mode == "auto":
+        mode = "fake"
+    return AgentRegistration(
+        name="taxi-agent",
+        mode=mode,
+        runtime_arn=runtime_arn,
+        qualifier=os.getenv("TAXI_AGENT_QUALIFIER", "DEFAULT"),
+    )

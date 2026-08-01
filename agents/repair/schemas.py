@@ -25,8 +25,9 @@ class ProviderOption(BaseModel):
     name: str
     city: str
     district: str
+    address: str
+    phone: str
     rating: float
-    completed_jobs: int
     base_visit_fee: int
     available_slots: list[AvailableSlot]
 

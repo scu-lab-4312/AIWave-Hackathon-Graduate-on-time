@@ -8,7 +8,7 @@ Browser UI
   -> Repair AgentCore Runtime（領域推理、選擇與預訂）
   -> AgentCore Gateway MCP（兩個具 schema 的工具）
   -> Lambda（查詢、估價、交易與冪等）
-  -> private RDS for MySQL（虛擬廠商、案件、時段、預訂）
+  -> private RDS for MySQL（共享 CMS 廠商＋Agent 專用案件、時段、預訂）
 ```
 
 fake Repair adapter 只在 Runtime 失敗時提供無副作用回覆，不得寫入資料庫或宣稱預訂成功。正式流量以 response 的 `specialist_backend=agentcore` 為通過條件。
@@ -19,25 +19,39 @@ fake Repair adapter 只在 Runtime 失敗時提供無副作用回覆，不得寫
 
 | 資源 | 識別碼 |
 |---|---|
-| RDS MySQL | `repair-demo-mysql` / DB `repair_demo` |
+| RDS MySQL | `database-2` / DB `hackathon` |
+| 廠商主表 | `cms_homepage_service_type_10`（唯讀） |
 | Lambda | `repair-demo-operations` |
 | Gateway | `repair-demo-gateway-o4idvsbeb7` |
 | Gateway target | `BA95GV6EHN` (`repair-operations`) |
-| Repair Runtime | `repair_specialist-WCdztwHnmX` |
-| Orchestrator Runtime | `orchestrator-B7uJuFGYRT` |
+| Repair Runtime | `repair_specialist-WCdztwHnmX`（v4） |
+| Orchestrator Runtime | `orchestrator-B7uJuFGYRT`（v7） |
 | Orchestrator Memory | `orchestrator_mem-8Qfmrh3D5G` |
 
-密碼由 RDS managed master password 存入 Secrets Manager；程式與文件不保存 secret value。RDS 不開 public access，Lambda 透過 security group 連線，Secrets Manager 透過 VPC endpoint 存取。
+密碼由 Secrets Manager 的 `aiwave/hackathon/database-2` 保存；程式與文件不保存 secret value。RDS 不開 public access，Lambda 透過 security group 連線。
 
 ## 2. 資料與媒合規則
 
-`providers` 不使用經緯度，核心欄位固定為：
+廠商主資料直接讀取同伴管理的 `cms_homepage_service_type_10`：
 
 ```text
-id, name, city, district, rating, completed_jobs, is_active
+id, service_vendor_id, name, rate, county_code, zip, county_name,
+district_name, address, phone, business_hours, description,
+upd_time, cre_time, upd_id, cre_id
 ```
 
-媒合先選同 `city + district`，不足時才使用同 `city` 其他行政區，排序再看 rating、completed jobs 與最早時段。每次必須回傳至少三家。估價取相同 issue type 與區域的歷史完工價第 25/75 百分位，資料不足依序退到同城市與全區；它只是參考範圍，不是報價。
+欄位轉換為 `id -> provider_id`、`rate -> rating`、`county_name -> city`、`district_name -> district`，並直接回傳 `name`、`address`、`phone`。CMS 沒有 `completed_jobs`，因此契約與前端不再顯示這個虛構欄位。
+
+媒合先選同 `city + district`，不足時才使用同 `city` 其他行政區，排序看 rating、provider id 與最早時段，每次恰好回傳三家。估價取相同 issue type 與區域的歷史完工價第 25/75 百分位，資料不足依序退到同城市與全區；它只是參考範圍，不是報價。
+
+共享 CMS 表完全唯讀，流程缺少的功能使用 Repair Agent 擁有的輔助表：
+
+```text
+agent_repair_provider_services  # 服務類型與基本到府費
+agent_repair_availability       # 可選時段
+agent_repair_price_history      # 參考估價歷史
+agent_repair_bookings           # 冪等預訂
+```
 
 資料表與 seed 位於：
 
@@ -47,44 +61,42 @@ id, name, city, district, rating, completed_jobs, is_active
 
 ## 3. RDS 與 Lambda
 
-先建立 VPC security groups、Secrets Manager interface endpoint 與 DB subnet group，再建立 private MySQL：
+使用既有 private RDS `database-2`。先允許 Repair Lambda SG 連入 RDS SG 的 TCP 3306：
 
 ```bash
-aws rds create-db-instance \
-  --db-instance-identifier repair-demo-mysql \
-  --engine mysql --engine-version 8.0.42 \
-  --db-instance-class db.t4g.micro \
-  --allocated-storage 20 --storage-type gp2 \
-  --db-name repair_demo --master-username admin \
-  --manage-master-user-password \
-  --db-subnet-group-name repair-demo-subnets \
-  --vpc-security-group-ids "$REPAIR_RDS_SG" \
-  --no-publicly-accessible --no-multi-az \
-  --backup-retention-period 0 --no-deletion-protection \
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0ad73c0452f14e0ff \
+  --protocol tcp --port 3306 \
+  --source-group sg-01e8823030c6a108b \
+  --description "Repair Lambda to shared hackathon RDS" \
   --region us-west-2
 ```
 
-Lambda role 需要 `AWSLambdaVPCAccessExecutionRole`、目標 RDS secret 的 `secretsmanager:GetSecretValue` 與其 KMS key 的 `kms:Decrypt`。建立函式時傳入 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_SECRET_ARN`，並使用 Lambda security group：
+Lambda role 需要 `AWSLambdaVPCAccessExecutionRole` 與新 Secret 的 `secretsmanager:GetSecretValue`：
 
 ```bash
-aws lambda create-function \
-  --function-name repair-demo-operations \
-  --runtime python3.12 --handler lambda_function.lambda_handler \
-  --role "$REPAIR_LAMBDA_ROLE_ARN" \
-  --zip-file fileb:///tmp/repair_ops_lambda.zip \
-  --timeout 30 --memory-size 256 \
-  --vpc-config "SubnetIds=$REPAIR_SUBNETS,SecurityGroupIds=$REPAIR_LAMBDA_SG" \
-  --environment "Variables={DB_HOST=$REPAIR_DB_HOST,DB_PORT=3306,DB_NAME=repair_demo,DB_SECRET_ARN=$REPAIR_DB_SECRET_ARN}" \
-  --region us-west-2
+aws iam put-role-policy \
+  --role-name repair-demo-lambda-role \
+  --policy-name RepairDemoSecretAccess \
+  --policy-document file://infra/iam/repair-database2-secret-policy.json
 ```
 
-初始化只用虛擬資料：
+Lambda 環境變數：
+
+```text
+DB_HOST=database-2.crc4kemeeine.us-west-2.rds.amazonaws.com
+DB_PORT=3306
+DB_NAME=hackathon
+DB_SECRET_ARN=arn:aws:secretsmanager:us-west-2:377648263536:secret:aiwave/hackathon/database-2-rfefMm
+```
+
+初始化只建立／補齊 `agent_repair_*` 示範資料，不會修改、清空或寫入 `cms_homepage_service_type_10`：
 
 ```bash
 aws lambda invoke \
   --function-name repair-demo-operations \
   --cli-binary-format raw-in-base64-out \
-  --payload '{"_tool_name":"initialize_demo_data"}' \
+  --payload '{"_tool_name":"initialize_repair_support_data"}' \
   /tmp/repair-seed-response.json \
   --region us-west-2
 ```
@@ -175,4 +187,9 @@ BEDROCK_AGENTCORE_MEMORY_ID=orchestrator_mem-8Qfmrh3D5G
 7. 前端必須顯示估價卡與恰好三張廠商卡；按鈕送回 provider/slot 選擇。
 8. 測試結束確認 demo server port 已關閉：`lsof -nP -iTCP:3000 -sTCP:LISTEN` 無輸出。
 
-本次 2026-08-01 遠端 E2E 已通過：Orchestrator v3 → Repair v3 → Gateway → Lambda → RDS，完成預訂並回傳 booking code；Memory 與 sticky task 同時驗證成功。
+2026-08-01 初版遠端 E2E 已通過。2026-08-02 再將廠商主資料切至共享 CMS RDS，實際驗證結果：
+
+- 初始化讀到 CMS 水電廠商 2,000 間，建立 8,000 筆服務設定、8,000 個示範時段與 2,000 筆估價歷史，回傳 `cms_table_modified=false`。
+- 台北市士林區漏水查詢回三間 CMS 廠商，包含地址、電話、評分與兩個時段；估價為 NT$1,300–2,200，sample size 72。
+- Lambda 直接預訂與相同 `task_id` 重送通過，booking code 相同且第二次 `idempotent_replay=true`。
+- Orchestrator v7 → Repair v4 → Gateway → Lambda → `database-2/hackathon` 兩輪通過，`specialist_backend=agentcore`、sticky task id 不變、最終 `stage=booked` 且 `active_task=null`。

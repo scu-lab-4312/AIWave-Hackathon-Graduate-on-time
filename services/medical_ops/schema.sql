@@ -1,12 +1,7 @@
-CREATE TABLE IF NOT EXISTS medical_pharmacies (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(120) NOT NULL,
-    city VARCHAR(40) NOT NULL,
-    district VARCHAR(40) NOT NULL,
-    address VARCHAR(240) NOT NULL,
-    rating DECIMAL(2,1) NOT NULL,
-    pharmacist_name VARCHAR(80) NOT NULL,
-    line_id VARCHAR(80) NOT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    INDEX idx_medical_pharmacies_location (city, district, is_active)
-);
+-- Reference-only contract. This table is owned and populated by the shared CMS.
+-- The Medical Lambda is read-only and must never create, truncate, or seed it.
+SELECT id, service_vendor_id, name, rate, county_code, zip, county_name,
+       district_name, address, phone, business_hours, description,
+       upd_time, cre_time, upd_id, cre_id
+FROM cms_homepage_service_type_12
+LIMIT 0;

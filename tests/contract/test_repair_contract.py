@@ -3,6 +3,7 @@ from io import BytesIO
 
 from adapters.agentcore_repair import AgentCoreRepairClient
 from adapters.fake_repair import FakeRepairClient
+from agents.repair.schemas import ProviderOption
 from shared.contracts import HandoffRequest, SpecialistResponse, TaskStatus
 
 
@@ -45,6 +46,27 @@ class RepairContractTests(unittest.TestCase):
         response = adapter.invoke(request)
         self.assertEqual(response.task_id, request.task_id)
         self.assertEqual(adapter.client.kwargs["runtimeSessionId"], request.task_id)
+
+    def test_provider_contract_uses_cms_address_and_phone(self):
+        provider = ProviderOption.model_validate(
+            {
+                "option_id": "provider-1",
+                "provider_id": 1,
+                "name": "安心專業水電行",
+                "city": "台北市",
+                "district": "中正區",
+                "address": "台北市中正區中正路23號",
+                "phone": "02-2000-0001",
+                "rating": 3.5,
+                "base_visit_fee": 600,
+                "available_slots": [
+                    {"slot_id": "1", "start_at": "2026-08-03T10:00:00+08:00"}
+                ],
+            }
+        )
+        dumped = provider.model_dump()
+        self.assertEqual(dumped["phone"], "02-2000-0001")
+        self.assertNotIn("completed_jobs", dumped)
 
 
 if __name__ == "__main__":

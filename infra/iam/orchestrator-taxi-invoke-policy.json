@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeTaxiSpecialistRuntime",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:InvokeAgentRuntime",
+      "Resource": [
+        "arn:aws:bedrock-agentcore:us-west-2:377648263536:runtime/taxi_specialist-mKAjnDD2q2",
+        "arn:aws:bedrock-agentcore:us-west-2:377648263536:runtime/taxi_specialist-mKAjnDD2q2/runtime-endpoint/DEFAULT"
+      ]
+    }
+  ]
+}

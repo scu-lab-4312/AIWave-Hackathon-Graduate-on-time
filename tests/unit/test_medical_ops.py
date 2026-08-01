@@ -37,7 +37,7 @@ class _Connection:
 
 
 class MedicalOpsTests(unittest.TestCase):
-    def test_lookup_returns_three_virtual_line_contacts(self):
+    def test_lookup_returns_three_phone_contacts_from_cms_table(self):
         rows = [
             {
                 "pharmacy_id": index,
@@ -46,8 +46,7 @@ class MedicalOpsTests(unittest.TestCase):
                 "district": "信義區",
                 "address": f"測試路 {index} 號",
                 "rating": 4.9,
-                "pharmacist_name": f"藥師 {index}",
-                "line_id": f"@demo-{index}",
+                "phone": f"02-2100-000{index}",
             }
             for index in range(1, 4)
         ]
@@ -57,7 +56,7 @@ class MedicalOpsTests(unittest.TestCase):
                 {"task_id": "task-1", "city": "台北市", "district": "信義區"}
             )
         self.assertEqual(len(result["options"]), 3)
-        self.assertEqual(result["options"][0]["line_id"], "@demo-1")
+        self.assertEqual(result["options"][0]["phone"], "02-2100-0001")
         self.assertEqual(fake_connection.cursor_instance.parameters, ("台北市", "信義區"))
 
     def test_lookup_rejects_medical_or_personal_fields(self):

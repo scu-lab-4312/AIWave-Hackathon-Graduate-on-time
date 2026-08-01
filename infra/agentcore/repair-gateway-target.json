@@ -1,7 +1,7 @@
 {
   "gatewayIdentifier": "repair-demo-gateway-o4idvsbeb7",
   "name": "repair-operations",
-  "description": "RDS-backed provider search, estimate, and booking operations",
+  "description": "Shared CMS provider search with Agent-owned estimate, availability, and booking operations",
   "targetConfiguration": {
     "mcp": {
       "lambda": {
@@ -10,7 +10,7 @@
           "inlinePayload": [
             {
               "name": "get_repair_options",
-              "description": "Find at least three active repair providers in the requested city, prioritizing the same district, and calculate a reference price range from similar completed repair events.",
+              "description": "Find exactly three repair providers from the shared CMS table, prioritizing the requested district, and calculate a reference estimate from Agent-owned price history.",
               "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -1,6 +1,7 @@
 """Reliable routing and task-state orchestration for the home-service agent."""
 
 import logging
+import re
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from bedrock_agentcore.runtime.context import RequestContext
@@ -21,9 +22,10 @@ MEDICAL_CITY_ALIASES = {
     "新北市": "新北市", "新北": "新北市",
     "台中市": "台中市", "臺中市": "台中市", "台中": "台中市", "臺中": "台中市",
 }
-MEDICAL_DEMO_DISTRICTS = {
-    "信義區", "大安區", "板橋區", "新店區", "中和區", "西屯區", "北屯區", "南屯區",
-}
+MEDICAL_DISTRICT_AFTER_CITY = re.compile(r"([\u4e00-\u9fff]{1,4}(?:區|鄉|鎮|市))")
+MEDICAL_DISTRICT_STANDALONE = re.compile(
+    r"(?:^|[在於住、，,\s])([\u4e00-\u9fff]{1,3}(?:區|鄉|鎮|市))"
+)
 
 
 def _medical_handoff_input(message: str, known_facts: dict) -> tuple[str, dict]:
@@ -33,14 +35,18 @@ def _medical_handoff_input(message: str, known_facts: dict) -> tuple[str, dict]:
         for key, value in known_facts.items()
         if key in {"city", "district"} and value
     }
+    city_end: int | None = None
     for alias in sorted(MEDICAL_CITY_ALIASES, key=len, reverse=True):
-        if alias in message:
+        city_start = message.find(alias)
+        if city_start >= 0:
             safe_facts["city"] = MEDICAL_CITY_ALIASES[alias]
+            city_end = city_start + len(alias)
             break
-    for district in MEDICAL_DEMO_DISTRICTS:
-        if district in message:
-            safe_facts["district"] = district
-            break
+    district_match = MEDICAL_DISTRICT_AFTER_CITY.search(message[city_end:]) if city_end else None
+    if city_end is None:
+        district_match = MEDICAL_DISTRICT_STANDALONE.search(message)
+    if district_match:
+        safe_facts["district"] = district_match.group(1)
     location = "、".join(
         f"{label}={safe_facts[key]}"
         for key, label in (("city", "城市"), ("district", "行政區"))
@@ -52,7 +58,9 @@ def _medical_handoff_input(message: str, known_facts: dict) -> tuple[str, dict]:
 def _next_known_facts(specialist: SpecialistResponse, fallback: dict) -> dict:
     """Persist structured specialist state needed for the next conversational turn."""
     facts = dict(specialist.data.get("known_facts") or fallback)
-    for key in ("stage", "estimate", "provider_options", "booking", "pharmacy_options"):
+    for key in (
+        "stage", "estimate", "provider_options", "driver_options", "booking", "pharmacy_options"
+    ):
         value = specialist.data.get(key)
         if value not in (None, [], {}):
             facts[key] = value
