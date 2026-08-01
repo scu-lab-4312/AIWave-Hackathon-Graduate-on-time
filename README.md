@@ -36,19 +36,23 @@ Taxi Agent 從共享 CMS 取得三位司機，收集城市、行政區、目的�
 
 ## 啟動聊天前端
 
-使用具備 `bedrock-agentcore:InvokeAgentRuntime` 權限的 AWS credentials：
+本機開發不需要 AWS credentials；預設 `auto` 模式在未設定 `AGENT_RUNTIME_ARN` 時直接使用本機 orchestrator 與無外部副作用的 fake specialist：
 
 ```bash
 .venv/bin/python frontend.py
 ```
 
-開啟 <http://localhost:3000>。瀏覽器只呼叫本機 `/api/chat`，AWS credentials 不會送到前端。
+開啟 <http://localhost:3000>。瀏覽器只呼叫本機 `/api/chat`。
 
-若部署到不同 runtime，可設定：
+若要使用已部署的 AgentCore orchestrator，請提供具備 `bedrock-agentcore:InvokeAgentRuntime` 權限的 AWS credentials，並明確設定：
 
 ```bash
-AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...' .venv/bin/python frontend.py
+FRONTEND_AGENT_MODE=agentcore \
+AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...' \
+.venv/bin/python frontend.py
 ```
+
+也可使用 `FRONTEND_AGENT_MODE=local` 強制本機模式。`auto` 模式設定了 runtime 時會優先呼叫 AgentCore，遠端失敗則安全降級至本機 orchestrator。
 
 ## 黑箱驗證
 

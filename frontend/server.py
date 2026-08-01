@@ -1,6 +1,7 @@
-"""Minimal web UI and SigV4-signed proxy for the deployed orchestrator."""
+"""Minimal web UI with local and SigV4-signed AgentCore backends."""
 
 import json
+import logging
 import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -10,11 +11,56 @@ from botocore.config import Config
 
 
 ROOT = Path(__file__).parent
-RUNTIME_ARN = os.getenv(
-    "AGENT_RUNTIME_ARN",
-    "arn:aws:bedrock-agentcore:us-west-2:377648263536:runtime/orchestrator-B7uJuFGYRT",
-)
+RUNTIME_ARN = os.getenv("AGENT_RUNTIME_ARN")
 REGION = os.getenv("AWS_REGION", "us-west-2")
+BACKEND_MODE = os.getenv("FRONTEND_AGENT_MODE", "auto").strip().lower()
+VALID_BACKEND_MODES = {"auto", "agentcore", "local"}
+logger = logging.getLogger("frontend.server")
+
+
+def _invoke_remote(prompt: str, session_id: str, actor_id: str) -> dict:
+    if not RUNTIME_ARN:
+        raise RuntimeError("FRONTEND_AGENT_MODE=agentcore requires AGENT_RUNTIME_ARN")
+    client = boto3.client(
+        "bedrock-agentcore",
+        region_name=REGION,
+        config=Config(read_timeout=300, connect_timeout=10),
+    )
+    response = client.invoke_agent_runtime(
+        agentRuntimeArn=RUNTIME_ARN,
+        qualifier="DEFAULT",
+        runtimeSessionId=session_id,
+        payload=json.dumps({"prompt": prompt, "actor_id": actor_id}).encode(),
+    )
+    body = json.loads(response["response"].read())
+    body.setdefault("orchestrator_backend", "agentcore")
+    return body
+
+
+def _invoke_local(prompt: str, session_id: str, actor_id: str, backend: str) -> dict:
+    from apps.orchestrator.main import process_turn
+
+    body = process_turn(prompt, session_id, actor_id)
+    body["orchestrator_backend"] = backend
+    return body
+
+
+def invoke_agent(prompt: str, session_id: str, actor_id: str) -> dict:
+    """Use the configured backend, with a local fallback in auto mode."""
+    if BACKEND_MODE not in VALID_BACKEND_MODES:
+        raise RuntimeError(
+            f"Unsupported FRONTEND_AGENT_MODE: {BACKEND_MODE}; "
+            f"expected one of {sorted(VALID_BACKEND_MODES)}"
+        )
+    if BACKEND_MODE == "local" or (BACKEND_MODE == "auto" and not RUNTIME_ARN):
+        return _invoke_local(prompt, session_id, actor_id, "local")
+    if BACKEND_MODE == "agentcore":
+        return _invoke_remote(prompt, session_id, actor_id)
+    try:
+        return _invoke_remote(prompt, session_id, actor_id)
+    except Exception:
+        logger.exception("AgentCore orchestrator failed; using local fallback")
+        return _invoke_local(prompt, session_id, actor_id, "local-fallback")
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -34,19 +80,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not prompt or len(session_id) < 33:
                 raise ValueError("prompt 與有效的 session_id 為必填")
 
-            client = boto3.client(
-                "bedrock-agentcore",
-                region_name=REGION,
-                config=Config(read_timeout=300, connect_timeout=10),
-            )
-            response = client.invoke_agent_runtime(
-                agentRuntimeArn=RUNTIME_ARN,
-                qualifier="DEFAULT",
-                runtimeSessionId=session_id,
-                payload=json.dumps({"prompt": prompt, "actor_id": actor_id}).encode(),
-            )
-            body = json.loads(response["response"].read())
-            self._json(200, body)
+            self._json(200, invoke_agent(prompt, session_id, actor_id))
         except (ValueError, json.JSONDecodeError) as error:
             self._json(400, {"error": str(error)})
         except Exception as error:
@@ -64,7 +98,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     port = int(os.getenv("PORT", "3000"))
-    print(f"Orchestrator UI: http://localhost:{port}")
+    print(f"Orchestrator UI: http://localhost:{port} (backend={BACKEND_MODE})")
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
 
