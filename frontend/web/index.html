@@ -38,6 +38,7 @@
 </main>
 <script>
   const chat=document.querySelector('#chat'), form=document.querySelector('#form'), input=document.querySelector('#prompt'), send=document.querySelector('#send');
+  let isComposing=false;
   const sessionId=sessionStorage.sessionId ||= crypto.randomUUID();
   const actorId=localStorage.actorId ||= crypto.randomUUID();
   function add(text,role,extra=''){const el=document.createElement('div');el.className=`msg ${role} ${extra}`;el.textContent=text;chat.append(el);chat.scrollTop=chat.scrollHeight;return el}
@@ -57,7 +58,13 @@
     catch(err){wait.textContent=err.message||'連線失敗，請稍後再試。';wait.classList.remove('thinking')}finally{send.disabled=false;input.focus()}
   }
   form.addEventListener('submit',e=>{e.preventDefault();sendPrompt(input.value.trim())});
-  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+  input.addEventListener('compositionstart',()=>{isComposing=true});
+  input.addEventListener('compositionend',()=>{isComposing=false});
+  input.addEventListener('keydown',e=>{
+    if(e.key!=='Enter'||e.shiftKey)return;
+    if(isComposing||e.isComposing||e.keyCode===229)return;
+    e.preventDefault();form.requestSubmit();
+  });
 </script>
 </body>
 </html>
