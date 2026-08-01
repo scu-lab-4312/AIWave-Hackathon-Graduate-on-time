@@ -99,22 +99,7 @@ def invoke_taxi(request: HandoffRequest) -> tuple[SpecialistResponse, str]:
         return FakeTaxiClient().invoke(request), "fake-fallback"
 
 
-def invoke_specialist(
-    target_agent: str,
-    request: HandoffRequest,
-    *,
-    force_fake: bool = False,
-) -> tuple[SpecialistResponse, str]:
-    if force_fake:
-        fake_clients: dict[str, SpecialistClient] = {
-            "taxi-agent": FakeTaxiClient(),
-            "medical-agent": FakeMedicalClient(),
-            "repair-agent": FakeRepairClient(),
-        }
-        client = fake_clients.get(target_agent)
-        if not client:
-            raise RuntimeError(f"Unsupported specialist target: {target_agent}")
-        return client.invoke(request), "fake"
+def invoke_specialist(target_agent: str, request: HandoffRequest) -> tuple[SpecialistResponse, str]:
     if target_agent == "taxi-agent":
         return invoke_taxi(request)
     if target_agent == "medical-agent":

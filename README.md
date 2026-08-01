@@ -52,7 +52,7 @@ AGENT_RUNTIME_ARN='arn:aws:bedrock-agentcore:...' \
 .venv/bin/python frontend.py
 ```
 
-也可使用 `FRONTEND_AGENT_MODE=local` 強制本機模式；此模式停用 AgentCore Memory，並強制使用無外部副作用的 fake specialist。`auto` 模式設定了 runtime 時會優先呼叫 AgentCore，只有在憑證無法取得、確認請求尚未送出時才降級至本機，避免重播結果不明的遠端操作。
+也可使用 `FRONTEND_AGENT_MODE=local` 強制本機模式。`auto` 模式設定了 runtime 時會優先呼叫 AgentCore，遠端失敗則安全降級至本機 orchestrator。
 
 ## 黑箱驗證
 
