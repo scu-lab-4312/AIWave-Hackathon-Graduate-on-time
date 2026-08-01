@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Session 初始化",
+      "trigger": "SessionStart",
+      "description": "在每次 session 開始時顯示 git 狀態並提醒查看編碼規範",
+      "action": {
+        "type": "command",
+        "command": "git status && echo \"請查看 .kiro/steering/ 目錄中的編碼規範\""
+      }
+    }
+  ]
+}
