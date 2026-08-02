@@ -36,6 +36,14 @@ def process_handoff(request: HandoffRequest) -> SpecialistResponse:
             structured_output_model=RepairAssessment,
         )
     assessment = RepairAssessment.model_validate(result.structured_output)
+    # 一旦預約已成立（stage=booked 或已產生 booking），就不再回傳廠商選項，
+    # 避免前端在「預約成功」訊息之後又重新渲染時段選擇卡片。
+    booking_confirmed = assessment.booking is not None or assessment.stage == "booked"
+    provider_options = (
+        []
+        if booking_confirmed
+        else [option.model_dump(mode="json") for option in assessment.provider_options]
+    )
     return SpecialistResponse(
         task_id=request.task_id,
         status=TaskStatus(assessment.status),
@@ -48,7 +56,7 @@ def process_handoff(request: HandoffRequest) -> SpecialistResponse:
             "ready_for_matching": assessment.ready_for_matching,
             "stage": assessment.stage,
             "estimate": assessment.estimate.model_dump(mode="json") if assessment.estimate else None,
-            "provider_options": [option.model_dump(mode="json") for option in assessment.provider_options],
+            "provider_options": provider_options,
             "booking": assessment.booking.model_dump(mode="json") if assessment.booking else None,
         },
     )

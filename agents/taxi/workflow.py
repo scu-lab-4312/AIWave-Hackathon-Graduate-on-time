@@ -33,6 +33,13 @@ def process_handoff(request: HandoffRequest) -> SpecialistResponse:
             structured_output_model=TaxiAssessment,
         )
     assessment = TaxiAssessment.model_validate(result.structured_output)
+    # 預約成立後不再回傳司機選項，避免前端在「預約成功」訊息後又顯示時段卡片。
+    booking_confirmed = assessment.booking is not None or assessment.stage == "booked"
+    driver_options = (
+        []
+        if booking_confirmed
+        else [option.model_dump(mode="json") for option in assessment.driver_options]
+    )
     return SpecialistResponse(
         task_id=request.task_id,
         agent="taxi-agent",
@@ -43,7 +50,7 @@ def process_handoff(request: HandoffRequest) -> SpecialistResponse:
             "known_facts": assessment.known_facts,
             "missing_fields": assessment.missing_fields,
             "stage": assessment.stage,
-            "driver_options": [option.model_dump(mode="json") for option in assessment.driver_options],
+            "driver_options": driver_options,
             "booking": assessment.booking.model_dump(mode="json") if assessment.booking else None,
         },
     )

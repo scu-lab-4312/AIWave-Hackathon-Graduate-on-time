@@ -112,6 +112,7 @@
   function localTime(value){return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}
   function ticketNo(index){const b=document.createElement('span');b.className='ticket-no';b.textContent=String(index+1).padStart(2,'0');return b}
   function renderOptions(data){
+    if(data?.booking||data?.stage==='booked')return;
     const estimate=data?.estimate, providers=data?.provider_options||[], pharmacies=data?.pharmacy_options||[], drivers=data?.driver_options||[];
     if(!estimate&&!providers.length&&!pharmacies.length&&!drivers.length)return;
     const wrap=document.createElement('section');wrap.className='results';
