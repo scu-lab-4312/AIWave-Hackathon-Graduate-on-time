@@ -87,8 +87,11 @@ def process_turn(prompt: str, session_id: str, actor_id: str) -> dict:
             bool(routing.sticky_task_id),
             len(prompt),
         )
-        task_id = active_task.task_id if active_task else new_task_id()
-        known_facts = active_task.known_facts if active_task else {}
+        # 只有同一個專業 Agent 才延續舊任務；切換領域時開全新任務，避免舊任務的
+        # task_id 與 known_facts 洩漏到新的專業 Agent。
+        is_continuation = active_task is not None and active_task.target_agent == routing.target_agent
+        task_id = active_task.task_id if is_continuation else new_task_id()
+        known_facts = dict(active_task.known_facts) if is_continuation else {}
         handoff_message = prompt
         if routing.target_agent == "medical-agent":
             handoff_message, known_facts = _medical_handoff_input(prompt, known_facts)
@@ -99,7 +102,7 @@ def process_turn(prompt: str, session_id: str, actor_id: str) -> dict:
             intent=routing.sub_intent or "repair_unspecified",
             message=handoff_message,
             known_facts=known_facts,
-            missing_fields=active_task.missing_fields if active_task else [],
+            missing_fields=active_task.missing_fields if is_continuation else [],
             safety_alert=routing.safety_alert,
         )
         specialist, specialist_backend = invoke_specialist(routing.target_agent or "repair-agent", handoff)

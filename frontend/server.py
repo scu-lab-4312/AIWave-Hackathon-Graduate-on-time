@@ -32,7 +32,10 @@ def _invoke_remote(prompt: str, session_id: str, actor_id: str) -> dict:
         runtimeSessionId=session_id,
         payload=json.dumps({"prompt": prompt, "actor_id": actor_id}).encode(),
     )
-    body = json.loads(response["response"].read())
+    raw = response["response"].read()
+    if not raw:
+        raise RuntimeError("AgentCore orchestrator returned an empty response")
+    body = json.loads(raw)
     body.setdefault("orchestrator_backend", "agentcore")
     return body
 
@@ -83,8 +86,9 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(200, invoke_agent(prompt, session_id, actor_id))
         except (ValueError, json.JSONDecodeError) as error:
             self._json(400, {"error": str(error)})
-        except Exception as error:
-            self.log_error("Agent invocation failed: %s", error)
+        except Exception:
+            # 記錄完整 traceback，方便從 log 確認 Load failed / 502 的實際根因。
+            logger.exception("Agent invocation failed")
             self._json(502, {"error": "Agent 暫時無法回應，請稍後再試。"})
 
     def _json(self, status: int, payload: dict):

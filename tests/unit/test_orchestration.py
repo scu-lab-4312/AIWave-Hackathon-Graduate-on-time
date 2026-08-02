@@ -111,6 +111,42 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(classify_route("先不用了", task).action, RouteAction.CANCEL)
         self.assertEqual(classify_route("另外客廳的燈也不亮", task).action, RouteAction.CLARIFY)
 
+    def test_active_task_switches_on_cross_domain_intent(self):
+        taxi_task = ActiveTask(
+            task_id="taxi-1",
+            target_agent="taxi-agent",
+            intent="accessible_ride",
+            missing_fields=["destination"],
+        )
+        switched = classify_route("我要找藥局", taxi_task)
+        self.assertEqual(switched.action, RouteAction.DISPATCH)
+        self.assertEqual(switched.target_agent, "medical-agent")
+        self.assertEqual(switched.intent, IntentName.MEDICAL)
+        self.assertIsNone(switched.sticky_task_id)
+
+        repair_task = ActiveTask(
+            task_id="repair-1",
+            target_agent="repair-agent",
+            intent="plumbing_leak",
+            missing_fields=["leak_rate"],
+        )
+        to_taxi = classify_route("我想叫車去醫院", repair_task)
+        self.assertEqual(to_taxi.action, RouteAction.DISPATCH)
+        self.assertEqual(to_taxi.target_agent, "taxi-agent")
+        self.assertIsNone(to_taxi.sticky_task_id)
+
+    def test_active_task_same_domain_keyword_stays_sticky(self):
+        taxi_task = ActiveTask(
+            task_id="taxi-1",
+            target_agent="taxi-agent",
+            intent="accessible_ride",
+            missing_fields=["special_needs"],
+        )
+        route = classify_route("需要輪椅接送", taxi_task)
+        self.assertEqual(route.action, RouteAction.DISPATCH)
+        self.assertEqual(route.target_agent, "taxi-agent")
+        self.assertEqual(route.sticky_task_id, "taxi-1")
+
 
 class VerticalFlowTests(unittest.TestCase):
     def setUp(self):
@@ -129,6 +165,15 @@ class VerticalFlowTests(unittest.TestCase):
         self.assertEqual(second["specialist"]["status"], "completed")
         self.assertTrue(second["specialist"]["data"]["ready_for_matching"])
         self.assertIsNone(second["active_task"])
+
+    def test_cross_domain_switch_starts_new_task(self):
+        first = orchestrator.process_turn("廚房水管漏水", "session-switch", "actor-1")
+        repair_task_id = first["active_task"]["task_id"]
+        second = orchestrator.process_turn("我要找藥局", "session-switch", "actor-1")
+        self.assertEqual(second["routing"]["target_agent"], "medical-agent")
+        self.assertEqual(second["routing"]["intent"], "medical")
+        self.assertIsNone(second["routing"]["sticky_task_id"])
+        self.assertNotEqual(second["specialist"]["task_id"], repair_task_id)
 
     def test_task_isolated_by_session(self):
         orchestrator.process_turn("廚房水管漏水", "session-a", "actor-1")
