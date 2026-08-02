@@ -16,6 +16,7 @@ MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-6")
 REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-west-2"))
 MEMORY_ID = os.getenv("BEDROCK_AGENTCORE_MEMORY_ID")
 STATE_KEY = "active_task"
+PROFILE_KEY = "shared_profile"
 AGENT_ID = "orchestrator-state"
 
 _local_states: dict[str, dict] = {}
@@ -49,6 +50,16 @@ def load_active_task(session_id: str, agent: Agent | None) -> ActiveTask | None:
     return ActiveTask.model_validate(raw) if raw else None
 
 
+def load_shared_profile(session_id: str, agent: Agent | None) -> dict:
+    """Load the session-scoped, cross-agent user profile (empty when unset)."""
+    if agent:
+        raw = agent.state.get(PROFILE_KEY)
+    else:
+        with _local_lock:
+            raw = _local_states.get(session_id, {}).get(PROFILE_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
 def save_turn(
     session_id: str,
     user_message: str,
@@ -56,16 +67,19 @@ def save_turn(
     active_task: ActiveTask | None,
     agent: Agent | None,
     manager: AgentCoreMemorySessionManager | None,
+    shared_profile: dict | None = None,
 ) -> None:
     raw_task = active_task.model_dump(mode="json") if active_task else None
+    profile = dict(shared_profile) if shared_profile else {}
     if agent and manager:
         manager.append_message({"role": "user", "content": [{"text": user_message}]}, agent)
         manager.append_message({"role": "assistant", "content": [{"text": assistant_message}]}, agent)
         agent.state.set(STATE_KEY, raw_task)
+        agent.state.set(PROFILE_KEY, profile)
         manager.sync_agent(agent)
     else:
         with _local_lock:
-            _local_states[session_id] = {STATE_KEY: raw_task}
+            _local_states[session_id] = {STATE_KEY: raw_task, PROFILE_KEY: profile}
 
 
 def clear_local_states() -> None:

@@ -19,10 +19,23 @@ UNSUPPORTED_KEYWORDS = {"搬家", "清潔", "打掃", "洗衣", "除蟲", "冷�
 PLATFORM_KEYWORDS = {"怎麼使用", "如何使用", "怎麼用", "收費", "平台", "支援什麼", "服務範圍"}
 CANCEL_KEYWORDS = {"取消", "不用了", "先不要", "停止處理"}
 NEW_TASK_MARKERS = {"另外", "還有一個", "另一個問題", "順便"}
+# Phrases that only make sense as a reply to a prior options/confirmation turn.
+# Used to recognize a message that was "orphaned" when its task was lost.
+SELECTION_MARKERS = {
+    "我要選", "我選", "選第", "第一位", "第二位", "第三位",
+    "第一間", "第二間", "第三間", "第一個", "第二個", "第三個",
+    "slot_id", "這位", "這間", "這個時段", "就這", "就選",
+}
 
 
 def _contains_any(text: str, keywords: set[str]) -> bool:
     return any(keyword in text for keyword in keywords)
+
+
+def looks_like_selection(message: str) -> bool:
+    """True when a message reads like a choice/confirmation from a prior turn."""
+    text = message.strip()
+    return _contains_any(text, SELECTION_MARKERS)
 
 
 def _repair_sub_intent(text: str) -> str:

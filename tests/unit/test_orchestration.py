@@ -1,6 +1,8 @@
 import unittest
 
 from apps.orchestrator import main as orchestrator
+from apps.orchestrator import profile as profile_module
+from apps.orchestrator import routing
 from apps.orchestrator import task_state
 from apps.orchestrator.routing import classify_route
 from shared.contracts import ActiveTask, IntentName, RouteAction, SpecialistResponse, TaskStatus
@@ -249,6 +251,103 @@ class VerticalFlowTests(unittest.TestCase):
         )
         self.assertEqual(facts, {"city": "台北市", "district": "士林區"})
         self.assertEqual(message, "只使用以下位置資料：城市=台北市、行政區=士林區")
+
+    def test_shared_profile_seeds_location_after_domain_switch(self):
+        # A prior agent (e.g. taxi) already learned the user's location + needs.
+        task_state.save_turn(
+            "session-profile", "u", "a", None, None, None,
+            {"city": "台北市", "district": "士林區", "special_needs": "輪椅"},
+        )
+        result = orchestrator.process_turn("廚房水管漏水", "session-profile", "actor-1")
+        facts = result["active_task"]["known_facts"]
+        # Repair no longer has to re-ask for the location it never collected.
+        self.assertEqual(facts.get("city"), "台北市")
+        self.assertEqual(facts.get("district"), "士林區")
+        # Wheelchair need is not a repair fact, so it is not injected there,
+        # but it stays remembered in the session profile.
+        self.assertNotIn("special_needs", facts)
+        self.assertEqual(result["shared_profile"]["special_needs"], "輪椅")
+
+    def test_shared_profile_persists_across_turns(self):
+        task_state.save_turn(
+            "session-persist", "u", "a", None, None, None,
+            {"city": "新北市", "district": "板橋區"},
+        )
+        orchestrator.process_turn("廚房水管漏水", "session-persist", "actor-1")
+        second = orchestrator.process_turn("每秒一滴", "session-persist", "actor-1")
+        self.assertEqual(second["shared_profile"]["city"], "新北市")
+        self.assertEqual(second["shared_profile"]["district"], "板橋區")
+
+
+class SharedProfileTests(unittest.TestCase):
+    def test_taxi_location_translates_to_repair_fact_keys(self):
+        taxi_facts = {"pickup_city": "台北市", "pickup_district": "士林區", "special_needs": "輪椅"}
+        profile = profile_module.merge_profile({}, "taxi-agent", taxi_facts)
+        self.assertEqual(profile, {"city": "台北市", "district": "士林區", "special_needs": "輪椅"})
+
+        repair_seed = profile_module.seed_task_facts("repair-agent", profile)
+        self.assertEqual(repair_seed, {"city": "台北市", "district": "士林區"})
+
+        taxi_seed = profile_module.seed_task_facts("taxi-agent", profile)
+        self.assertEqual(
+            taxi_seed,
+            {"pickup_city": "台北市", "pickup_district": "士林區", "special_needs": "輪椅"},
+        )
+
+    def test_medical_seed_excludes_non_location_entities(self):
+        profile = {"city": "台北市", "district": "士林區", "special_needs": "輪椅"}
+        medical_seed = profile_module.seed_task_facts("medical-agent", profile)
+        self.assertEqual(medical_seed, {"city": "台北市", "district": "士林區"})
+
+    def test_empty_values_are_not_stored(self):
+        profile = profile_module.merge_profile({}, "repair-agent", {"city": "", "district": None})
+        self.assertEqual(profile, {})
+
+    def test_last_agent_is_not_seeded_into_specialist_facts(self):
+        profile = profile_module.remember_last_agent(
+            {"city": "台北市"}, "taxi-agent"
+        )
+        self.assertEqual(profile_module.last_agent(profile), "taxi-agent")
+        # The reserved key must never leak into a specialist's known_facts.
+        self.assertNotIn(
+            profile_module.LAST_AGENT_KEY,
+            profile_module.seed_task_facts("repair-agent", profile),
+        )
+
+
+class SelectionRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        task_state.MEMORY_ID = None
+        task_state.clear_local_states()
+
+    def test_looks_like_selection(self):
+        self.assertTrue(
+            routing.looks_like_selection("我要選第 1 位司機「周小姐」，時段（slot_id: 115）")
+        )
+        self.assertFalse(routing.looks_like_selection("我家有漏水"))
+
+    def test_orphan_selection_gets_context_aware_recovery(self):
+        # Simulate a prior taxi flow whose task is gone (e.g. dropped mid-booking).
+        task_state.save_turn(
+            "session-orphan", "u", "a", None, None, None,
+            {"city": "台北市", "district": "士林區", "_last_agent": "taxi-agent"},
+        )
+        result = orchestrator.process_turn(
+            "我要選第 1 位司機「周小姐」，時段 8/4 上午10:00（slot_id: 115）",
+            "session-orphan",
+            "actor-1",
+        )
+        # It references the接送 service instead of the generic dead-end reply.
+        self.assertIn("接送預約", result["result"])
+        self.assertNotIn("我還無法確定", result["result"])
+
+    def test_generic_fallback_when_no_recent_service(self):
+        result = orchestrator.process_turn("嗯嗯好喔", "session-empty", "actor-1")
+        self.assertIn("接送", result["result"])  # copy now lists all three services
+
+    def test_dispatch_records_last_agent(self):
+        result = orchestrator.process_turn("廚房水管漏水", "session-last", "actor-1")
+        self.assertEqual(result["shared_profile"]["_last_agent"], "repair-agent")
 
 
 if __name__ == "__main__":
