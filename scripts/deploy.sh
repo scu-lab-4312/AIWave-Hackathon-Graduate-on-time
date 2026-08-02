@@ -7,7 +7,7 @@
 # 用法：
 #   scripts/deploy.sh                  # 部署全部四個元件
 #   scripts/deploy.sh orchestrator     # 只部署 orchestrator
-#   scripts/deploy.sh repair taxi      # 部署指定元件
+#   scripts/deploy.sh repair taxi medical     # 部署指定元件
 #   scripts/deploy.sh --dry-run all    # 只打包與檢查，不上傳 / 不更新
 #
 # 前置需求：
