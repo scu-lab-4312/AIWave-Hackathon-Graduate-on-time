@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from apps.orchestrator import main as orchestrator
@@ -154,6 +155,12 @@ class VerticalFlowTests(unittest.TestCase):
     def setUp(self):
         task_state.MEMORY_ID = None
         task_state.clear_local_states()
+        # Keep the suite offline: the points integration is display-only and
+        # must not turn a completed-task assertion into a live network call.
+        os.environ["REWARD_POINTS_ENABLED"] = "false"
+
+    def tearDown(self):
+        os.environ.pop("REWARD_POINTS_ENABLED", None)
 
     def test_repair_follow_up_completes_same_task(self):
         first = orchestrator.process_turn("廚房水管漏水", "session-1", "actor-1")

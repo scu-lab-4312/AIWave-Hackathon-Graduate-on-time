@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from apps.orchestrator import main, task_state
@@ -7,6 +8,10 @@ class FakeHandoffIntegrationTests(unittest.TestCase):
     def setUp(self):
         task_state.MEMORY_ID = None
         task_state.clear_local_states()
+        os.environ["REWARD_POINTS_ENABLED"] = "false"
+
+    def tearDown(self):
+        os.environ.pop("REWARD_POINTS_ENABLED", None)
 
     def test_backend_is_reported_and_task_is_sticky(self):
         first = main.process_turn("廚房水管漏水", "session-1", "actor-1")

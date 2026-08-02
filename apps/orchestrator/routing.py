@@ -114,6 +114,47 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
     return classify_fresh(text)
 
 
+# Execution order for a multi-service plan. Services that *produce a place to go*
+# (finding a pharmacy, fixing something at home) run before transport, so a
+# "ride to <somewhere>" request can hand its destination to the taxi step.
+_PLAN_ORDER = ("medical-agent", "repair-agent", "taxi-agent")
+
+
+def plan_steps(text: str) -> list[dict]:
+    """Ordered specialist steps when one message spans two or more domains.
+
+    Returns an empty list for zero- or single-domain messages (the normal
+    single-intent path in ``classify_fresh`` handles those). Each step is a
+    small dict the orchestrator can dispatch: ``target_agent``, ``intent`` and
+    ``sub_intent``. Order follows ``_PLAN_ORDER`` regardless of the order the
+    keywords appeared, so "搭車去拿藥" plans medical → taxi (locate the pharmacy,
+    then arrange the ride there), not taxi → medical.
+    """
+    stripped = text.strip()
+    present: dict[str, dict] = {}
+    if _contains_any(stripped, MEDICAL_KEYWORDS):
+        present["medical-agent"] = {
+            "target_agent": "medical-agent",
+            "intent": IntentName.MEDICAL.value,
+            "sub_intent": "pharmacist_contact",
+        }
+    if _contains_any(stripped, REPAIR_KEYWORDS):
+        present["repair-agent"] = {
+            "target_agent": "repair-agent",
+            "intent": IntentName.REPAIR.value,
+            "sub_intent": _repair_sub_intent(stripped),
+        }
+    if _contains_any(stripped, TAXI_KEYWORDS):
+        present["taxi-agent"] = {
+            "target_agent": "taxi-agent",
+            "intent": IntentName.TAXI.value,
+            "sub_intent": "accessible_ride",
+        }
+    if len(present) < 2:
+        return []
+    return [present[agent] for agent in _PLAN_ORDER if agent in present]
+
+
 def classify_fresh(text: str) -> RoutingDecision:
     """Classify a message with no in-progress task (or a candidate new intent)."""
     if _contains_any(text, TAXI_KEYWORDS):

@@ -142,21 +142,38 @@
     document.body.dataset.agent=normalized?'specialist':'orchestrator';
   }
   async function readBody(res){try{return await res.json()}catch{return null}}
-  async function sendPrompt(prompt){if(!prompt||send.disabled)return;add(prompt,'user');input.value='';send.disabled=true;const wait=add('正在思考','agent','thinking');
+  const NETWORK_RETRY_DELAY_MS=900;
+  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  function chatOnce(prompt){
     const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+    return fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,session_id:sessionId,actor_id:actorId}),signal:controller.signal}).finally(()=>clearTimeout(timer));
+  }
+  async function sendPrompt(prompt){if(!prompt||send.disabled)return;add(prompt,'user');input.value='';send.disabled=true;const wait=add('正在思考','agent','thinking');
     try{
-      const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,session_id:sessionId,actor_id:actorId}),signal:controller.signal});
+      let res;
+      try{
+        res=await chatOnce(prompt);
+      }catch(err){
+        // 只對「連不上／連線中斷」這類網路層錯誤自動重試一次；逾時(AbortError)已等滿逾時不重試。
+        if(err?.name==='AbortError'||!(err instanceof TypeError))throw err;
+        wait.textContent='連線不穩，重新嘗試中';
+        await sleep(NETWORK_RETRY_DELAY_MS);
+        res=await chatOnce(prompt);
+      }
       const body=await readBody(res);
       if(!res.ok)throw new Error(body?.error||`伺服器回應異常（${res.status}），請稍後再試。`);
       if(!body)throw new Error('伺服器回應格式異常，請稍後再試。');
       applyAgentBackground(body?.routing?.target_agent);
-      wait.textContent=body.result;wait.classList.remove('thinking');renderOptions(body.specialist?.data);
+      wait.textContent=body.result;wait.classList.remove('thinking');
+      // 一輪可能串接多個服務（例：先藥局後接送），逐一渲染每個 specialist 的選項卡。
+      const steps=(body.specialists&&body.specialists.length)?body.specialists:(body.specialist?[body.specialist]:[]);
+      steps.forEach(step=>renderOptions(step?.data));
     }catch(err){
       const msg=err?.name==='AbortError'?'伺服器回應逾時，請稍後再試一次。'
         :err instanceof TypeError?'連線中斷或無法連上伺服器，請確認網路後再試一次。'
         :err?.message||'連線失敗，請稍後再試。';
       wait.textContent=msg;wait.classList.remove('thinking');
-    }finally{clearTimeout(timer);send.disabled=false;input.focus()}
+    }finally{send.disabled=false;input.focus()}
   }
   input.addEventListener('compositionstart',()=>{isComposing=true});
   input.addEventListener('compositionend',()=>{isComposing=false});
