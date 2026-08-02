@@ -19,7 +19,10 @@
     }
     * { box-sizing:border-box }
     body { margin:0; font:16px/1.55 ui-sans-serif,system-ui,"Noto Sans TC",sans-serif; color:var(--ink);
-      background:radial-gradient(circle at 12% -4%,#e2dcc2,transparent 38%),var(--paper); }
+      background:radial-gradient(circle at 12% -4%,#e2dcc2,transparent 38%),var(--paper);
+      transition:background-color .8s ease; }
+    /* 切換到任一專業 agent 時，統一換成這個底色 */
+    body[data-agent="specialist"] { --paper:#dfe9f2; }
     main { width:min(760px,100%); height:100dvh; margin:auto; padding:24px; display:grid; grid-template-rows:auto 1fr auto; gap:16px; }
 
     header { display:flex; align-items:center; gap:13px; padding-bottom:15px; border-bottom:1px dashed var(--line); }
@@ -77,6 +80,7 @@
     @keyframes dots { to{ clip-path:inset(0 -1ch 0 0) } from{ clip-path:inset(0 100% 0 0) } }
     @media (prefers-reduced-motion:reduce) {
       .results { animation:none } .thinking::after { animation:none; content:"..." }
+      body { transition:none }
     }
     @media(max-width:650px){ main{padding:16px}.msg{max-width:90%}.providers{grid-template-columns:1fr} }
   </style>
@@ -122,9 +126,37 @@
     if(pharmacies.length){const notice=document.createElement('div');notice.className='estimate';const strong=document.createElement('strong');strong.textContent='藥局聯絡電話';const small=document.createElement('small');small.textContent='以下為黑客松示範資料，請自行致電藥局確認；本平台不接收醫療資訊，也不建立預約。';notice.append(strong,small);wrap.append(notice);const grid=document.createElement('div');grid.className='providers';pharmacies.slice(0,3).forEach((pharmacy,index)=>{const card=document.createElement('article');card.className='provider';const title=document.createElement('h3');title.textContent=pharmacy.name;const meta=document.createElement('p');meta.textContent=`${pharmacy.city}${pharmacy.district}｜★ ${pharmacy.rating}`;const address=document.createElement('p');address.textContent=pharmacy.address;const contact=document.createElement('div');contact.className='pharmacy-contact';contact.textContent=`電話 ${pharmacy.phone}`;const copy=document.createElement('button');copy.type='button';copy.className='copy-contact';copy.textContent='複製電話';copy.addEventListener('click',async()=>{await navigator.clipboard.writeText(pharmacy.phone);copy.textContent='已複製';setTimeout(()=>copy.textContent='複製電話',1200)});card.append(ticketNo(index),title,meta,address,contact,copy);grid.append(card)});wrap.append(grid)}
     chat.append(wrap);chat.scrollTop=chat.scrollHeight;
   }
+  const REQUEST_TIMEOUT_MS=120000;
+  let currentTargetAgent=null;
+  function applyAgentBackground(targetAgent){
+    const normalized=targetAgent||null;
+    const prefersReduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const specialistSwitch=normalized&&currentTargetAgent&&normalized!==currentTargetAgent;
+    currentTargetAgent=normalized;
+    if(specialistSwitch&&!prefersReduced){
+      // 專業→專業：先回到 orchestrator 底色，再切回專業底色，讓使用者看得出切換。
+      document.body.dataset.agent='orchestrator';
+      setTimeout(()=>{document.body.dataset.agent='specialist'},650);
+      return;
+    }
+    document.body.dataset.agent=normalized?'specialist':'orchestrator';
+  }
+  async function readBody(res){try{return await res.json()}catch{return null}}
   async function sendPrompt(prompt){if(!prompt||send.disabled)return;add(prompt,'user');input.value='';send.disabled=true;const wait=add('正在思考','agent','thinking');
-    try{const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,session_id:sessionId,actor_id:actorId})});const body=await res.json();if(!res.ok)throw new Error(body.error);wait.textContent=body.result;wait.classList.remove('thinking');renderOptions(body.specialist?.data)}
-    catch(err){wait.textContent=err.message||'連線失敗，請稍後再試。';wait.classList.remove('thinking')}finally{send.disabled=false;input.focus()}
+    const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);
+    try{
+      const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,session_id:sessionId,actor_id:actorId}),signal:controller.signal});
+      const body=await readBody(res);
+      if(!res.ok)throw new Error(body?.error||`伺服器回應異常（${res.status}），請稍後再試。`);
+      if(!body)throw new Error('伺服器回應格式異常，請稍後再試。');
+      applyAgentBackground(body?.routing?.target_agent);
+      wait.textContent=body.result;wait.classList.remove('thinking');renderOptions(body.specialist?.data);
+    }catch(err){
+      const msg=err?.name==='AbortError'?'伺服器回應逾時，請稍後再試一次。'
+        :err instanceof TypeError?'連線中斷或無法連上伺服器，請確認網路後再試一次。'
+        :err?.message||'連線失敗，請稍後再試。';
+      wait.textContent=msg;wait.classList.remove('thinking');
+    }finally{clearTimeout(timer);send.disabled=false;input.focus()}
   }
   input.addEventListener('compositionstart',()=>{isComposing=true});
   input.addEventListener('compositionend',()=>{isComposing=false});

@@ -64,6 +64,20 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
                 reason="使用者明確取消目前任務",
                 sticky_task_id=active_task.task_id,
             )
+        # 進行中任務時，若訊息明確命中「不同領域」的專業需求，直接切換到新的專業 Agent，
+        # 以全新任務起始（不沿用舊任務的 task_id 與 known_facts）。
+        switch = classify_fresh(text)
+        if (
+            switch.action == RouteAction.DISPATCH
+            and switch.target_agent
+            and switch.target_agent != active_task.target_agent
+        ):
+            return switch.model_copy(
+                update={
+                    "reason": f"偵測到不同領域的新需求，從 {active_task.target_agent} 切換到 {switch.target_agent}",
+                    "sticky_task_id": None,
+                }
+            )
         if _contains_any(text, NEW_TASK_MARKERS):
             return RoutingDecision(
                 intent=IntentName.UNKNOWN,
@@ -84,6 +98,11 @@ def classify_route(message: str, active_task: ActiveTask | None = None) -> Routi
             sticky_task_id=active_task.task_id,
         )
 
+    return classify_fresh(text)
+
+
+def classify_fresh(text: str) -> RoutingDecision:
+    """Classify a message with no in-progress task (or a candidate new intent)."""
     if _contains_any(text, TAXI_KEYWORDS):
         return RoutingDecision(
             intent=IntentName.TAXI,
